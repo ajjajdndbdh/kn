@@ -1,0 +1,122 @@
+{
+  "summary": "FASE U UI Testing: Tested dual-unit functionality (roll + yard/kg/panel) across Purchasing, Purchase Requisitions, and Orders views. Backend POC 63/63 green, gate.sh --full 100% green (already verified). This iteration focused on UI-level verification of the dual-unit feature.",
+  
+  "backend_issues": {
+    "critical_bugs": [],
+    "flaky_endpoints": []
+  },
+  
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "POCreateForm / Buat PO button",
+        "issue": "Clicking '+ Buat' button on Purchasing view does not open the PO creation form/modal. Button appears to change state but no form is displayed. This prevents automated testing of U-US1 (Create PO with dual units).",
+        "selector": "button:has-text('Buat')",
+        "fix_priority": "HIGH",
+        "impact": "Cannot test PO creation with dual units through UI automation. Manual testing may be required to verify U-US1.",
+        "notes": "The button may open a dropdown menu or the form may load asynchronously. The form with data-testid='create-po-form' was not found after clicking. This could be a timing issue or the button behavior is different than expected."
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  
+  "passed_tests": [
+    "U-US5: Regression check - All 5 screens load successfully (purchasing, purchase-requisitions, orders, operations, inventory-board)",
+    "U-US4: Old documents show '—' not '0 roll' - Tested 6 old demo documents (PO-00001 to PO-00004, SO-0001, SO-0003). All correctly display '—' or empty cell for documents without qty_rolls. No '0 roll' literal found.",
+    "U-US2: Export CSV - CSV export button found and clicked on Purchasing view without console errors",
+    "U-US3 (Partial): Created PR-00006 with qty_rolls=3. PR creation successful and rolls field accepted input."
+  ],
+  
+  "test_report_links": [],
+  
+  "success_percentage": {
+    "backend": "100% (not tested - already verified as 63/63 green)",
+    "frontend_regression": "100% (5/5 screens load)",
+    "frontend_dual_units": "60% (3/5 user stories verified)",
+    "overall": "75%"
+  },
+  
+  "updated_files": [],
+  
+  "action_item_for_main_agent": [
+    {
+      "priority": "HIGH",
+      "item": "U-US1 NOT COMPLETED: Investigate why clicking '+ Buat' button on Purchasing view (?view=purchasing) does not open the PO creation form. The button appears to change state but no form/modal is displayed. Verify the button behavior and ensure the form opens correctly. Test data-testid='create-po-form' visibility after button click.",
+      "context": "This blocks automated verification of the core dual-unit feature (creating PO with 12 roll · 540 yard format). Manual testing recommended to verify: 1) Form opens, 2) qty_rolls input field works, 3) QtyDual component displays correctly in form and detail."
+    },
+    {
+      "priority": "MEDIUM",
+      "item": "U-US3 PARTIAL: Verify that UOM master (/api/uoms) includes all required units: yard, meter, KG, and PANEL. During testing, only 'yard' was clearly visible in page text. PR-00005 in the list shows 'Benang Katun Cone (per Kg)' which suggests 'kg' is available, but need to confirm all units are in the dropdown.",
+      "context": "The unit dropdown should populate from /api/uoms master. Code review shows useUomConversions() hook fetches from catalog. Need to verify the dropdown actually shows all 4 units when opened."
+    },
+    {
+      "priority": "LOW",
+      "item": "Consider adding data-testid attributes to PO creation form elements (supplier-master-select, warehouse-select, item-product-select, etc.) if not already present. This will make automated testing more reliable.",
+      "context": "Code review shows these testids exist in POCreateForm.jsx, but they were not found during automated testing. This could be a timing/loading issue or the form structure is different than expected."
+    }
+  ],
+  
+  "detailed_test_results": {
+    "U-US1_create_po_dual_units": {
+      "status": "BLOCKED",
+      "reason": "Form did not open after clicking '+ Buat' button",
+      "steps_completed": [
+        "Login successful",
+        "Navigate to ?view=purchasing",
+        "Click '+ Buat' button"
+      ],
+      "steps_blocked": [
+        "Fill supplier, warehouse, product",
+        "Enter qty=540, unit=yard/meter, qty_rolls=12",
+        "Verify dual unit display in form",
+        "Submit PO",
+        "Verify dual unit display in PO detail"
+      ]
+    },
+    "U-US2_export_csv": {
+      "status": "PASSED",
+      "details": "CSV export button found on Purchasing view and clicked successfully. No console errors detected. Purchase Requisitions view does not have export button (acceptable)."
+    },
+    "U-US3_units_from_master": {
+      "status": "PARTIAL",
+      "details": "Created PR-00006 with qty_rolls=3 successfully. Rolls input field works. However, could not verify all 4 required units (yard, meter, kg, panel) in the UOM dropdown. Only 'yard' was clearly visible in page text during testing. Evidence of 'kg' usage found in PR-00005 ('per Kg').",
+      "recommendation": "Manual verification needed: Open PR creation form → Add item → Click unit dropdown → Verify yard, meter, KG, PANEL options are present."
+    },
+    "U-US4_old_docs_no_zero_roll": {
+      "status": "PASSED",
+      "documents_tested": [
+        "PO-00001: PASSED (shows '—')",
+        "PO-00002: PASSED (shows '—')",
+        "PO-00003: PASSED (shows '—')",
+        "PO-00004: PASSED (shows '—')",
+        "SO-0001: PASSED (no '0 roll')",
+        "SO-0003: PASSED (no '0 roll')"
+      ],
+      "details": "All old demo documents (created by seed without qty_rolls) correctly display '—' or empty cell for roll count. No literal '0 roll' found in any document detail. QtyDual component logic working correctly: hasRolls() returns false for null/undefined, displays '—' as expected."
+    },
+    "U-US5_regression_check": {
+      "status": "PASSED",
+      "screens_tested": [
+        "?view=purchasing: PASSED",
+        "?view=purchase-requisitions: PASSED",
+        "?view=orders: PASSED",
+        "?view=operations: PASSED",
+        "?view=inventory-board: PASSED"
+      ],
+      "details": "All 5 screens loaded successfully without blank screens, 'Something went wrong' errors, or red console errors."
+    }
+  },
+  
+  "should_call_test_agent_after_fix": "false",
+  "should_main_agent_test_itself": "true",
+  
+  "notes": [
+    "Backend functionality already verified (POC 63/63 green, gate.sh --full 100% green)",
+    "QtyDual component code review shows correct logic: displays '—' for null/undefined rolls, formats as '12 roll · 540 yard'",
+    "Component is used in POCreateForm.jsx (line 361-363), PODetailPanel.jsx (line 123-124), OrderDetailPanel.jsx (line 223), and PurchaseRequisitionDetailPanel.jsx (line 120)",
+    "The main blocker is the PO creation form not opening in automated testing. Manual testing recommended for U-US1.",
+    "PR creation (U-US3) works and accepts rolls input, suggesting the dual-unit backend integration is functional",
+    "Old document handling (U-US4) is working perfectly - no '0 roll' displayed anywhere"
+  ]
+}

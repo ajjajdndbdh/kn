@@ -1,0 +1,23 @@
+{
+  "summary": "Verified all 8 review items for BERANDA PEMILIK Papan PO Custom + Notification address ribbons. Guardrail HIJAU: `verify_home_kpi.py --self-test` = 11/11 PASS incl. all 5 invariant H cases (papan==antrean, hantu-view, papan-hampa, umur/nomor invalid); `verify_home_kpi.py` runtime = 86 checks / 0 violations (nol residu, 21 collections restored). UI (browser, KSC, admin@): panel data-testid=admin-home-special-orders shows 'Papan PO Custom — menunggu keputusan (1)' with SORD-260824-0002 · Toko Kain Sejahtera · Rp 43.500.000 · badge admin-home-special-order-age-sord_0330f90b4668 = '9 hari'; row admin-home-special-order-<id> present; button admin-home-goto-special-orders navigates to ?view=special-orders (real screen). Count MATCHES Antrean Persetujuan row admin-home-approval-special_order=1 and matches MongoDB `special_orders {status: pending_approval}` recount = 1. Entity scope OK: switching to CV Kanda (ent_kanda) via scope-pick-ent_kanda shows admin-home-special-orders-empty ('Tidak ada PO custom yang menunggu keputusan') because demo doc is at ent_ksc. Notifications per role (backend GET /api/notifications after POST /api/notifications/generate as admin+manager, X-Entity-Id=ent_ksc): admin=20 items (18 me + 2 role, 0 all) with special_order_approval=1 and low_stock=16 me; manager=33 (18 me + 15 role, 0 all) with special_order_approval=1; finance=0 (empty, zero low_stock ✓); sales=1 (only internal_request_decided me, zero special_order_approval ✓); warehouse=1 (inspection_assigned me); salesadmin=1 (role). ZERO 'Umum'/addr-all across all 6 roles for the guarded types (low_stock, ar_due_soon, special_order_approval, order_approval). UI (bell panel): notif-bell -> notif-panel opens, notif-list renders with notif-addr-me-* / notif-addr-role-* ribbons only (no notif-addr-all-* observed on any role's bell). Filter controls all present: notif-filter-type (KNSelect), notif-filter-count, notif-filter-unread, notif-filter-sev-warning, notif-filter-reset (shown when active).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/scripts/guardrails/verify_home_kpi.py",
+    "/app/scripts/check_notifs_per_role.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AdminHome Papan PO Custom is wired to home_service.admin_home() `special_orders_waiting` payload; the same document (SORD-260824-0002) also flows through approval_backlog_service.queue_detail so both panels agree by construction — invariant H self-test locks this.",
+    "NotificationCenter item does not expose a `data-notif-type` attribute on notif-item-<id>; testing agents currently rely on GET /api/notifications for type-level assertions. Not a bug, but adding `data-notif-type` would make UI-only regression cheaper.",
+    "GET /api/notifications returns a bare list (not {notifications:[...]}); consistent with existing tests, worth documenting."
+  ],
+  "updated_files": ["/app/scripts/check_notifs_per_role.py (new helper)"],
+  "success_rate": {"backend": "100% (verify_home_kpi self-test 11/11 + runtime 86 checks 0 violations + 6/6 role notif contracts)", "frontend": "100% (admin Papan PO Custom + entity scope + goto + notif bell all 6 roles)"},
+  "test_credentials": "admin@kainnusantara.id · manager@kainnusantara.id · finance@kainnusantara.id · sales@kainnusantara.id · warehouse@kainnusantara.id · salesadmin@kainnusantara.id — password demo12345 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None persistent. `POST /api/notifications/generate` is idempotent per-day-per-person; ran once as admin and once as manager to ensure special_order_approval fan-out. Demo doc SORD-260824-0002 is created by bootstrap on backend start (age 9 days).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The frontend is served as a production bundle (yarn start -> static_server.js); any change under frontend/src requires `bash scripts/rebuild_frontend.sh` (~75s). Do NOT edit /app/backend/** while gate/POC scripts run (uvicorn hot-reload re-runs bootstrap, contaminates INV-GATE-01). If special_orders collection is emptied, restart backend to regenerate the pending demo doc. NotificationCenter item does NOT emit data-notif-type; assert types via GET /api/notifications instead.",
+  "rca of the issue": "N/A — no defects observed."
+}

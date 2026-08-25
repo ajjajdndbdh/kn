@@ -1,0 +1,26 @@
+{
+  "summary": "Re-test LAYAR (frontend only) atas perbaikan regresi B5 dari iteration_246. SEMUA LULUS. (a) Control Tower admin dengan GET /api/home/admin diblok (route.abort) tetap merender papan: `admin-home-special-orders-unreadable` (1) + `admin-home-special-orders-retry` (1), judul papan berbunyi '(—)' dan pesan 'Papan PO Custom — menunggu keputusan tidak bisa dibaca · Data gagal dimuat — ini BUKAN berarti tidak ada yang menunggu keputusan'; KPI 'Persetujuan Menunggu' = '—' dengan subteks 'Tidak bisa dibaca — coba muat ulang' (bukan 'Tidak ada yang menunggu'). (b) Dasbor Manajer dengan /api/home/manager diblok: `manager-home-board-special_order` + `-unreadable` + `-retry` ADA; `manager-home-approvals-unreadable` ('Antrean persetujuan tidak bisa dibaca — ... Ini BUKAN berarti meja Anda bersih.') dan `manager-home-late-unreadable` ADA; string 'Meja Anda bersih' dan 'Tidak ada keterlambatan hari ini' TIDAK ada di DOM. (c) Tombol 'Coba lagi' setelah unroute memuat data nyata di kedua beranda: SORD-260816-0001 · Rp 43.500.000 · lencana '9 hari' · 'perlu Manajer'; keadaan unreadable hilang; KPI admin kembali ke 31/'Terbanyak: Sample menunggu keputusan (3)'. (d) Smoke keadaan NORMAL: papan PO custom identik di admin & manajer; papan tambahan disembunyikan saat count 0 dan MUNCUL saat ada dokumen (probe kontrabon disputed 5 hari Rp 12.345.678 + retur antar-PT draft 12 hari Rp 7.654.321 tampil di kedua beranda, lalu dihapus — residu 0). (e) Panel detail lot dibuka via `lot-open-<id>` (20 tombol ada); `lot-status-history` menampilkan '25 Agu, 13.08 · Retur Jual · Lot dibentuk' (tanpa 'Invalid Date').",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Control Tower admin & Dasbor Manajer — keadaan pemuatan GAGAL", "issues": ["Papan/KPI persetujuan sudah jujur, tetapi kartu lain masih berbunyi kabar baik saat data tak terbaca: admin 'Tidak ada tagihan lewat tempo 🎉' & 'Semua stok di atas titik reorder'; manajer memperlihatkan angka Rp 0 / 'Menunggu Tanda Tangan 0' / lencana hijau 'Sesuai Jalur' dan 'Terlambat Hari Ini · 0 hal perlu dikejar'. Kelas 'hijau tapi hampa' yang sama, prioritas rendah, di luar cakupan B5 yang diminta."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_sesi_2026_06_papan_manajer.py"],
+  "action_items": [
+    "Opsional (LOW): rapikan kartu non-papan pada keadaan gagal muat (piutang lewat tempo / stok rendah / target tim / 'Menunggu Tanda Tangan' / 'Terlambat Hari Ini' header) agar tidak menampilkan angka 0 & lencana hijau saat data tak terbaca."
+  ],
+  "critical_code_review_comments": [
+    "`selectWaitingBoards(data, unreadable)` di frontend/src/config/waitingBoards.js kini satu-satunya pemilih papan untuk AdminHome & ManagerHome — DRY terpenuhi dan B5 tidak bisa regres di satu layar saja. Disarankan menambah tes unit atas fungsi ini (kasus data=null+unreadable → kerangka special_order) sebagai penjaga permanen."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "tidak diuji (permintaan: frontend only)", "frontend": "100% (semua kasus B5 + smoke normal + riwayat lot lulus)"},
+  "seed_data_creation": "2 dokumen probe sementara (contra_bons `t1cb-probe` disputed 5 hari, interco_returns `t1ir-probe` draft 12 hari, ent_ksc, ditandai _t1_probe) — SUDAH DIHAPUS, residu diverifikasi 0 (INV-GATE-01). Skrip probe sementara juga dihapus. Data demo tidak disentuh.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "/app/memory/test_credentials.md — admin@ / manager@ / warehouse@kainnusantara.id, password demo12345",
+  "context_for_next_testing_agent": "Regresi B5 (papan hilang saat API beranda gagal) DITUTUP & diverifikasi di layar untuk admin dan manajer, termasuk tombol 'Coba lagi'. Pola uji: login → `scope-pick-ent_ksc` → `page.route('**/api/home/admin*', abort)` → reload → cek `*-unreadable`/`*-retry` → `page.unroute` → klik retry. Papan tambahan (contra_bon_dispute / interco_return) bisa dipicu dengan menyisipkan dokumen ke koleksi `contra_bons` (status disputed) & `interco_returns` (status draft) pada `test_database`. Panel lot: Gudang → nav-group-gudang → nav-stock-atp → hub-tab-inventory-lots → `lot-open-<id>` (testid SUDAH ADA; temuan LOW iterasi lalu tidak valid).",
+  "rca_of_the_issue": "Perbaikan yang diverifikasi: `selectWaitingBoards(data, unreadable)` mengembalikan kerangka papan `special_order` saat unreadable, sehingga `WaitingQueueBoard` tetap dirender dan menampilkan keadaan 'tidak bisa dibaca' + tombol retry; AdminHome menghitung `approvalSub` dari `boardsUnreadable`, ManagerHome menambahkan `manager-home-approvals-unreadable` & `manager-home-late-unreadable`."
+}

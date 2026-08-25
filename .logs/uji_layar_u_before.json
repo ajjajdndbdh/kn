@@ -1,0 +1,11 @@
+{
+ "purchase_orders": 14,
+ "wms_tasks": 24,
+ "inventory_rolls": 66,
+ "inventory_lots": 35,
+ "inventory_movements": 67,
+ "inventory_balances": 27,
+ "journal_entries": 122,
+ "audit_logs": 110,
+ "notifications": 32
+}

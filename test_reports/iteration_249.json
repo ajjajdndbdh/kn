@@ -1,0 +1,18 @@
+{
+  "summary": "Full retest sesi 2026-06 INV-GL-DRIFT + retest B5 Manajer/Admin. SEMUA target verifikasi HIJAU. (1) B5 Manajer: setelah page.route abort + refresh, keempat testid unreadable tampil (manager-home-approvals-unreadable, manager-home-late-unreadable, manager-home-board-special_order-unreadable, -retry), testid basi TIDAK tampil (approvals-empty, late-empty, approvals, approvals-oldest); KPI 'Menunggu tanda tangan' berbunyi '—'; header kartu Terlambat berbunyi 'tidak bisa dibaca'; retry memuat data nyata SORD-260816-0001 · Rp 43.500.000 · 9 hari. (2) B5 Admin: admin-home-special-orders-unreadable + retry tampil, admin-home-approval-backlog TIDAK tampil, KPI Persetujuan Menunggu = '—' + subteks 'Tidak bisa dibaca — coba muat ulang', retry memuat SORD nyata. (3) Recon history: banner hijau 'GL Persediaan sinkron dengan subledger', tombol recon-post-opening DISABLED (selisih 0 di dua entitas), blok recon-history menampilkan KSC/JE-00021 · 2026-08-25 · Rp 623.466.500 · oleh seed · 'tanpa dasar tercatat' (reason kosong ditandai merah — sesuai desain). (4) Scheduler: job inventory_drift_watch dijalankan manual → status Sukses, detail 'semua buku sinkron dengan subledger', jumlah jurnal source=inventory_opening TIDAK berubah (1 sebelum & sesudah) — job TIDAK memposting jurnal. (5) Config: kunci inventory.drift_alert_rupiah label 'Selisih persediaan yang diperingatkan' ada di grup 'Dasar Keuangan & Periode', diubah ke 5000 lalu dikembalikan ke 1000 sukses (banner 'Tersimpan dan langsung berlaku di mesin'). (6) Smoke: papan admin normal menampilkan SORD-260816-0001 · Rp 43.500.000 · 9 hari; papan contra-bon & interco return tersembunyi saat count=0.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "InventoryReconTab.jsx memfilter /api/gl/journal?source=inventory_opening tetapi tidak memfilter per entitas — bila kelak ada true-up di CV Kanda Suka, riwayat 5-terakhir bisa mencampur buku. Sekarang aman karena data demo hanya satu jurnal; untuk masa depan bisa ditambahkan params entity_id agar riwayat cocok dengan konteks entitas yang sedang dipilih.",
+    "Data demo mengandung satu jurnal true-up (KSC/JE-00021) TANPA field reason — layar dengan benar menandai 'tanpa dasar tercatat' merah. Ini bukan bug UI melainkan konsekuensi seed lama; bila ingin demo yang lebih meyakinkan, seed_realistic bisa menambahkan reason ke jurnal itu."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@kainnusantara.id / demo12345 · manager@kainnusantara.id / demo12345 · scope ent_ksc",
+  "seed_data_creation": "Tidak ada perubahan data. Job inventory_drift_watch dijalankan (0 notifikasi, 0 jurnal). Config drift_alert_rupiah diubah sementara ke 5000 lalu dikembalikan ke 1000 (nilai awal).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Semua fitur INV-GL-DRIFT sesi 2026-06 (recon-history + scheduler job + config setting) + regresi B5 (ManagerHome & AdminHome) sudah diverifikasi bersih. ManagerHome.jsx sekarang meletakkan cabang boardsUnreadable DI ATAS cek panjang daftar (baris 146 & 222), sesuai action item iterasi 248. Tidak ada aksi lanjutan diperlukan."
+}

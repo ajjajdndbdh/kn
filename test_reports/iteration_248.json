@@ -1,0 +1,29 @@
+{
+  "summary": "Verifikasi ulang B5 regresi papan antrean mahal di Control Tower + Dasbor Manajer. Sisi ADMIN LULUS penuh (papan tetap tampil sebagai 'tidak bisa dibaca', tombol Coba lagi ada, subteks KPI 'Persetujuan Menunggu' berbunyi 'Tidak bisa dibaca — coba muat ulang', dan setelah unroute+retry data nyata SORD-260816-0001 · Rp 43.500.000 · 9 hari kembali). Sisi MANAJER hanya sebagian lulus: papan PO custom sudah punya keadaan unreadable+retry, TAPI kartu 'Menunggu Persetujuan Saya' dan 'Terlambat Hari Ini' TIDAK berpindah ke keadaan unreadable saat refresh gagal — keduanya malah tetap menampilkan daftar BASI dari data pemuatan sukses sebelumnya. Ini adalah bentuk lain dari kelas bug B5 yang sama (angka basi tampil percaya diri).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ManagerHome.jsx — kartu 'Menunggu Persetujuan Saya'", "issue": "Saat GET /api/home/manager gagal di-refresh, `data` lama tetap dipegang sehingga (approvals.items||[]).length !== 0, cabang `boardsUnreadable ? manager-home-approvals-unreadable : manager-home-approvals-empty` TIDAK PERNAH tercapai. Yang tampil adalah daftar antrean basi dengan angka lama — tepat kelas 'angka basi tampil percaya diri' yang komentar B5 pada baris 77-80 di AdminHome.jsx justru diciptakan untuk dicegah.", "selector": "[data-testid=manager-home-approvals-unreadable]", "priority": "HIGH"},
+      {"component": "ManagerHome.jsx — kartu 'Terlambat Hari Ini'", "issue": "Masalah identik: cek `(late.rows||[]).length === 0` menutupi cabang unreadable. `manager-home-late-unreadable` tidak pernah tampil bila pemuatan sukses sebelumnya menaruh baris di `late.rows`.", "selector": "[data-testid=manager-home-late-unreadable]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "ManagerHome.jsx: Angkat cek `boardsUnreadable` KE ATAS cek `.length === 0` untuk kedua kartu. Contoh untuk approvals (baris ~141-157): `if (loading && !data) return <loading/>; if (boardsUnreadable) return <manager-home-approvals-unreadable/>; if ((approvals.items||[]).length === 0) return <manager-home-approvals-empty/>; return <list/>;`. Terapkan pola yang sama pada kartu 'Terlambat Hari Ini' (baris ~216-231) dengan testid `manager-home-late-unreadable`.",
+    "Setelah perbaikan: pastikan `WaitingQueueBoard` `unreadable` prop tetap dilewatkan (sudah benar) — perubahan ini hanya menutup kebocoran di dua kartu di atas."
+  ],
+  "critical_code_review_comments": [
+    "AdminHome.jsx (baris 81) memakai pola `boardsUnreadable = !loading && (!data || !!error)` yang benar dan `approvalSub` sudah cabang duluan berdasarkan `boardsUnreadable`, tetapi KPI value `data?.approvals_pending ?? '—'` masih menampilkan ANGKA BASI '29' saat refresh gagal. Bila strict pemilik ingin nilai KPI juga menyembunyikan angka basi, ubah menjadi `boardsUnreadable ? '—' : (data?.approvals_pending ?? '—')`. Tidak diminta eksplisit di review — hanya catatan konsistensi.",
+    "ManagerHome.jsx tidak mempunyai indikator visual untuk KPI baris `Menunggu tanda tangan` (baris 95-96) saat unreadable; masih menunjukkan angka basi. Sekali lagi tidak diminta di review, tapi selaras dengan semangat B5."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend only)", "frontend": "83%"},
+  "test_credentials": "admin@kainnusantara.id / demo12345 · manager@kainnusantara.id / demo12345; scope pick ent_ksc",
+  "seed_data_creation": "Tidak ada — memakai seed demo yang sudah dijalankan pemilik (SORD-260816-0001 hadir di GET /api/home/admin).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Skenario reproduksi manajer: login manager@kainnusantara.id / demo12345, pilih KSC, tunggu manager-home render (sukses), lalu `page.route('**/api/home/manager*', abort)` + klik `manager-home-refresh`. Verifikasi bahwa `manager-home-approvals-unreadable` DAN `manager-home-late-unreadable` sekarang tampil, sementara `manager-home-approvals-empty`/`manager-home-late-empty` TIDAK tampil (dan daftar item basi juga tidak). Papan SO (`manager-home-board-special_order-unreadable` + retry) sudah bekerja — jangan sampai regres. Sisi admin sudah lulus sepenuhnya di iterasi ini, boleh dilewati bila tidak diubah.",
+  "rca of the issue": "ManagerHome.jsx menempatkan cabang `boardsUnreadable` DI DALAM cabang '.length === 0'. Karena `setData()` tidak dibersihkan pada error di `load()` (baris 32-42: hanya `setError` yang dipanggil), data pemuatan sukses sebelumnya tetap bertahan dan `.length > 0`, sehingga cabang unreadable tak pernah dievaluasi. Perbaikan sederhana: taruh cek `boardsUnreadable` DI ATAS cek panjang, atau alternatif `setData(null)` saat error (tapi ini menghilangkan angka target/team juga — kurang diinginkan). Solusi pertama lebih tepat."
+}

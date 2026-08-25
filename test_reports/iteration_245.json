@@ -1,0 +1,46 @@
+{
+  "summary": "VERIFIKASI INDEPENDEN 11 temuan audit (HANDOFF_AUDIT_SESI_2026-08-24) sesudah perbaikan sesi 2026-08-25. Diukur sendiri (bukan mengandalkan POC penulis): 11 pytest baru di /app/backend/tests/test_verifikasi_sesi_2026_08_25.py (suntik dokumen → HTTP nyata → hapus), 7 pemeriksaan A2 di /app/tests/t1_verifikasi_A2.py (job keadaan 3x dalam SATU event loop + pengingat harian), 3 sesi peramban (B2/B5/C1/C2/A3 lewat UI publik), semua pagar (verify_aging_fields, verify_home_kpi, verify_notification_audience live + --self-test), verify_data_integrity --only db, dan POC (32 PASS · 26 PASS) + regresi (6 PASS). HASIL: 11/11 temuan TERBUKTI TERTUTUP, nol regresi fungsional pada alur PO custom/beranda/notifikasi. Residu special_orders & notifications = NOL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "scripts/verify_data_integrity.py --only db", "issue": "Pagar memang MEMERAH untuk total_amount bertipe teks ('special_order: 1 total_amount BUKAN angka' + nomor dokumen, exit code != 0), TETAPI keluaran CLI tidak pernah mencetak id invarian 'INV-DB-SORD' yang dipakai HANDOFF/PRD/komentar kode. Bukti tak bisa di-grep per id."},
+      {"endpoint": "backend/services/special_order_service.py::waiting_since()", "issue": "Umur tunggu hasil backfill HANYA dibaca dari status_history[].timestamp. Dokumen dengan riwayat berkunci lain (mis. 'at'/'changed_at') diam-diam jatuh ke created_at (terukur: dokumen 20 hari dilaporkan 20 hari, bukan 2). Jalur tulis produksi memakai 'timestamp' sehingga bukan cacat sekarang, tetapi ketergantungan satu-kunci ini tidak dijaga pagar mana pun — kelas B1 bisa lahir kembali lewat pintu skema."},
+      {"endpoint": "backend/services/approval_backlog_service.py::queue_detail()", "issue": "Pemindaian dibatasi _OLDEST_SCAN=200 dokumen (urut created_at). Risiko rendah (umur tunggu >= umur created_at), namun bila suatu hari >200 dokumen menunggu, papan hanya jujur lewat penanda truncated, tidak lewat urutan."},
+      {"endpoint": "bootstrap (startup) / seed_realistic.py", "issue": "Setiap START backend membuat 6 journal_entries source='vendor_bill' (VBM-00001..6) + 4 baris system_settings yang TIDAK ada sesudah seed. Akibatnya (a) GL tagihan makloon baru lengkap setelah backend restart, (b) sidik jari gate_residue mustahil nol bila ada restart/reseed. Tidak duplikat saat dijalankan ulang (idempotent), jadi ini masalah TEMPAT seeding, bukan duplikasi."},
+      {"endpoint": "/app/backend/tests/ (suite legacy)", "issue": "57 dari 393 pytest GAGAL di modul yang TIDAK berkaitan dengan sesi ini (test_f1a_pricelist harga hardcode 199000 vs 217628.99, test_gelombang1_gl_integrity, test_f0cdef_multientity, test_m3_*, test_price_approval_supersede_notification). Bukan regresi perbaikan PO custom (tak menyentuh special_orders/home), tetapi suite itu juga MENINGGALKAN residu berat (22 perubahan, mis. sales_orders +13, audit_logs +240, interco_transactions -12) sehingga tidak boleh dijalankan sebelum pengukuran residu."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_verifikasi_sesi_2026_08_25.py",
+    "/app/tests/t1_verifikasi_A2.py",
+    "/app/tests/t1_ui_fixture.py"
+  ],
+  "action_items": [
+    "Cetak id invarian 'INV-DB-SORD' pada baris FAIL verify_data_integrity supaya bukti bisa dicari per id (bukan per kalimat bebas).",
+    "Tambah pagar/normalisasi kunci waktu status_history (timestamp|at|changed_at) di waiting_since(), atau invarian skema yang memerah bila entri riwayat tidak memiliki 'timestamp'.",
+    "Pindahkan pembuatan journal_entries tagihan makloon (VBM-*) + baris system_settings dari startup ke seed, supaya seed menghasilkan basis data yang GL-nya sudah lengkap dan sidik jari residu stabil.",
+    "Bersihkan/mutakhirkan 57 pytest legacy yang gagal (harga hardcode & alur GL) — sekarang menyembunyikan regresi nyata dan mencemari pengukuran residu."
+  ],
+  "critical_code_review_comments": [
+    "queue_detail() sudah benar (urut DB pakai created_at → potong setelah urut Python) dan penanda shown/hidden/truncated konsisten (shown==len(rows), hidden==count-shown) — diverifikasi dengan 13 dokumen nyata.",
+    "AdminHome.jsx: customUnreadable = !loading && (!data || !!error) berhasil membedakan 'gagal dibaca' dari 'kosong' — terbukti lewat route interception di peramban, judul berubah menjadi '(—)'.",
+    "dedupe_scope='ever' pada notify_special_order_waiting terbukti tahan terhadap 'ditandai dibaca' (job ke-3 = 0 notifikasi) sementara approval_reminder tetap 1 pesan per penerima per entitas per hari dan judulnya menyebut umur tertua NYATA (30 hari untuk dokumen uji, tidak disembunyikan)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_verifikasi_sesi_2026_08_25.py (BARU — uji verifikasi T1)",
+    "/app/tests/t1_verifikasi_A2.py (BARU)",
+    "/app/tests/t1_ui_fixture.py (BARU — suntik/bersih dokumen uji UI)"
+  ],
+  "success_rate": {"backend": "100% (11/11 uji verifikasi + 7/7 A2 + POC 32/32 & 26/26 + regresi 6/6; suite legacy tak terkait: 336/393)", "frontend": "100% (B2, B5, C1, C2, A3 semua terbukti lewat UI publik; nol console error)"},
+  "seed_data_creation": "Dokumen uji bertanda _t1_probe=True (13 special_orders + 1 dokumen A2) dan notifikasi hasil job dihapus semua. Karena suite legacy /app/backend/tests mencemari data, basis data DIRESET dengan `python seed_realistic.py` + `supervisorctl restart backend`; verify_data_integrity --only db sesudahnya: PASS 14 · FAIL 0.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@kainnusantara.id / demo12345 (X-Entity-Id: ent_ksc), manager@kainnusantara.id / demo12345 — keduanya bekerja",
+  "context_for_next_testing_agent": "Bukti per temuan: B1 days_waiting=2 (bukan 20) setelah backfill CLI; B3 dokumen 60 hari disisipkan TERAKHIR muncul di rows[0] dan rows terurut menurun; B2 payload shown=10/hidden=3/truncated=true DAN UI menampilkan 'Menampilkan 10 dari 13 — 3 lainnya belum tampil'; B4 GET /api/home/admin = 200 dengan amount=0 saat total_amount='43.500.000' dan pagar DB memerah (exit!=0); B5 route-abort '**/api/home/admin*' + klik admin-home-refresh → admin-home-special-orders-unreadable + tombol retry, admin-home-special-orders-empty TIDAK ada, judul '(—)'; C1 'perlu Manajer' (nol 'perlu manager'); C2 mode Semua Entitas → 10 lencana entity-badge-ent_ksc, nol id mentah; A3 tombol aktif & navigasi ke layar 'Pesanan Khusus (OD)'; A1 nol penyusun pesan di luar notification_service (hits lain hanya komentar / nama fungsi evaluate_special_order_approval); A2 job 1→4 notif, job 2 & 3 (setelah dibaca) → 0; D1 check_payload(g, 'admin', payload tanpa papan) = 1 pelanggaran, 'manager' = 0; B6 SORD-260816-0001 created_at 2026-08-16 (9 hari). CATATAN: (1) pytest.ini memakai xdist — pakai `-n0 -p no:randomly` untuk uji yang menyuntik data; (2) status_history WAJIB memakai kunci 'timestamp' agar backfill bekerja; (3) JANGAN jalankan seluruh /app/backend/tests sebelum mengukur residu.",
+  "rca_of_the_issue": "Tidak ada cacat baru yang ditemukan pada lingkup 11 temuan. Satu kegagalan awal pada uji saya sendiri (days_waiting=20) berakar pada uji, bukan produk: dokumen uji memakai kunci 'at' pada status_history sementara waiting_since() hanya membaca 'timestamp' — sekaligus mengungkap ketergantungan satu-kunci yang belum dijaga pagar. Residu bukan-nol pada gate_residue --check berasal dari (a) suite pytest legacy yang menulis data dan (b) bootstrap saat backend START yang membuat 6 journal_entries vendor_bill + 4 system_settings; keduanya di luar koleksi yang menjadi kriteria lulus (special_orders & notifications = nol residu), dan basis data sudah dipulihkan lewat seed_realistic.py."
+}

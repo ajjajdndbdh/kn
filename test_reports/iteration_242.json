@@ -1,0 +1,32 @@
+{
+  "summary": "Verified all 7 review items for special_order_approval notification addressing + config clear_layer. Required sequence ran clean: `python scripts/gate_residue.py --save` OK -> `python backend/test_core_notifikasi_alamat_poc.py` 35 PASS / 0 FAIL (incl. N3b legacy pending_approval docs receive addressed notifs, N4 idempotency, N5 entity isolation, N7 no broadcast fallback, N8 zero residue) -> `python scripts/gate_residue.py --check` PASS (nol residu: 39 koleksi, 24 balance, 11 SO). Additional POCs G-8 (122 PASS / 0 FAIL) and G-9 (119 PASS / 0 FAIL) also green. Wrote and ran 5 HTTP regression tests (all PASS) proving: generate fans out special_order_approval, addressed only to approvers (admin/manager), sales never sees them, second generate does not duplicate (per-person-per-day dedupe), and X-Entity-Id header enforces cross-entity isolation on GET /api/notifications. Wrote and ran a direct DB test on services/config_resolver.clear_layer proving no empty system_settings shells are left behind, while rows with other live overrides are preserved.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_notifications_addressing.py",
+    "/app/backend/tests/test_config_clear_layer.py",
+    "/app/test_reports/pytest/notifications_addressing.xml",
+    "/app/backend/test_core_notifikasi_alamat_poc.py",
+    "/app/backend/test_g8_bank_poc.py",
+    "/app/backend/test_g9_case_poc.py",
+    "/app/scripts/gate_residue.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/notification_service.py `_notify_pending_special_orders()` correctly sweeps all special_orders with status=pending_approval (not only those created via the API) and fans out per approver via create_addressed(permission=('order','approve')); verified by POC N3b and HTTP regression.",
+    "services/config_resolver.clear_layer() correctly avoids leaving empty system_settings shells: after `$unset` of the leaf, empty parent containers (e.g. `ar: {}`) are pruned and the whole row is deleted when no meaningful override remains. Rows retaining OTHER active overrides are preserved. Verified by /app/backend/tests/test_config_clear_layer.py.",
+    "Agent-to-agent hot-reload warning is real and observed: any edit under /app/backend/** during a gate/POC run makes INV-GATE-01 red due to measurement contamination (bootstrap creates makloon/receiving/hr/alerts system_settings rows), not a bug.",
+    "Login response uses key `token` (not `access_token`); consider adopting standard `access_token` + `token_type` for OAuth2-style compatibility (minor DX)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_notifications_addressing.py (new)",
+    "/app/backend/tests/test_config_clear_layer.py (new)"
+  ],
+  "success_rate": {"backend": "100% (35/35 POC N + 122/122 G-8 + 119/119 G-9 + 5/5 HTTP regression + config clear_layer script)", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "admin@kainnusantara.id / demo12345 (from /app/memory/test_credentials.md); sales@kainnusantara.id / demo12345",
+  "seed_data_creation": "None persistent. HTTP tests only trigger POST /api/notifications/generate (idempotent, per-day dedupe). Config test cleans up its own TEST_-prefixed config_values rows and reverts system_settings to baseline.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Do NOT edit any file under /app/backend while gate/POC scripts are running — uvicorn hot-reload will re-run bootstrap and create 4 system_settings rows (makloon/receiving/hr/alerts), turning INV-GATE-01 red as a false positive. If seed data drifts, `python seed_realistic.py` restores it. Canonical checks: the three POCs (test_core_notifikasi_alamat_poc.py, test_g8_bank_poc.py, test_g9_case_poc.py) + the two new regression files. Full gate `bash scripts/gate.sh --full` (~420s) was reported green in the previous session and was NOT rerun this iteration.",
+  "rca of the issue": "Prior iteration reported 121 PASS / 1 FAIL on POC G-8 and 'audit_logs: 103 -> 105 (+2)' residue. In this iteration both are fully resolved: POC G-8 = 122 PASS / 0 FAIL, POC N = 35 PASS / 0 FAIL, gate_residue --check returns 'nol residu' (audit_logs 103 -> 103, sessions 827 -> 827, permission_settings restored, journal_entries and system_settings identical). No further action for main agent."
+}

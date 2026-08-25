@@ -1,0 +1,100 @@
+{
+  "summary": "Audit reproduction dari HANDOFF_AUDIT_SESI_2026-08-24.md — TIDAK memperbaiki kode, hanya membuktikan/membantah temuan secara empiris. Backend test: /app/backend/tests/test_audit_findings_reproduction.py (6 pytest lulus, semua sebagai pembuktian). UI: login admin + panel Papan PO Custom + route interception /api/home/admin. Zero residu setelah pengukuran (gate_residue --check PASS).",
+  "findings": {
+    "A1_dua_definisi_pesan": {
+      "status": "TERBUKTI",
+      "bukti": "backend/routers/special_orders.py menyusun body dengan 'Diajukan oleh {user.name}. Perlu persetujuan {need_role or manajer}'. backend/services/notification_service.py._notify_pending_special_orders menyusun body TANPA 'Diajukan oleh', hanya 'Perlu persetujuan manajer.'. Notifikasi nyata terukur di DB: title identik ('PO custom menunggu persetujuan: SORD-260824-0002') tetapi body BERBEDA. Kedua tempat memakai notif_type='special_order_approval'."
+    },
+    "A2_penagih_ganda": {
+      "status": "TERBUKTI",
+      "bukti": "Untuk PO custom SORD-260824-0002 (menunggu 9 hari), user_manager_01 menerima 2 notifikasi: (a) type=special_order_approval ref='so_custom_appr:sord_...#user_manager_01' body='...Perlu persetujuan manajer', (b) type=approval_backlog ref='approval_backlog:ent_ksc' (recipient_role=manager) yang body-nya MENYEBUT SORD-260824-0002. Dua job berbeda menagih dokumen yang sama pada hari yang sama."
+    },
+    "B1_field_ditebak": {
+      "status": "TERBUKTI",
+      "bukti": "grep -E '(submitted_at|approval_requested_at)\\s*[=:]' backend/routers/special_orders.py backend/services/special_order_service.py → NOL hasil di jalur tulis. db.special_orders.count_documents({submitted_at exists})=0, count({approval_requested_at exists})=0. Suntik SO dgn created_at 20 hari lalu + status_history[pending_approval] 2 hari lalu → papan melapor 20 hari (harusnya 2). Papan MELEBIH-LEBIHKAN umur."
+    },
+    "B2_count_vs_rows_tanpa_penanda": {
+      "status": "TERBUKTI",
+      "bukti": "Suntik 12 dok pending_approval (+1 dokumen demo existing = 13) → GET /api/home/admin: special_orders_waiting.count=13, len(rows)=10. Keys respons: ['count','key','label','rows','view']. Tidak ada field 'shown'/'truncated'/'more'/'has_more'."
+    },
+    "B3_sort_potong_yang_tertua": {
+      "status": "TERBUKTI",
+      "bukti": "Suntik 11 dok muda (1-11 hari) LALU 1 dok TERTUA (60 hari) disisipkan terakhir. Hasil rows dari GET /api/home/admin: dokumen 60-hari TIDAK muncul (oldest_in=False). rows[0].days_waiting=9. Sort by submitted_at (field=null di semua) → urutan alami koleksi → limit(10) memotong yang paling penting."
+    },
+    "B4_string_amount_500": {
+      "status": "TERBUKTI",
+      "bukti": "Set total_amount='43.500.000' (string) pada 1 dok pending → GET /api/home/admin = HTTP 500 (Internal Server Error). Seluruh Control Tower jatuh, bukan hanya papannya. Konversi bertahan-galat belum ada di approval_backlog_service.queue_detail baris 391."
+    },
+    "B5_kegagalan_sebagai_kabar_baik": {
+      "status": "SEBAGIAN (terbukti secara kode; UI test berhasil pada refresh setelah data ada)",
+      "bukti": "Code: `const custom = data?.special_orders_waiting || {}; const customRows = custom.rows || [];` — pada first-load gagal (data===null), customRows===[] → empty state 'Tidak ada PO custom yang menunggu keputusan 🎉' RENDER. Playwright route-abort saat refresh menampilkan ErrorNotice 'Gagal memuat Control Tower', tetapi karena data sudah termuat lebih dulu, panel PO custom masih menampilkan baris lama (bukan empty). B5 tetap TERBUKTI untuk skenario first-load-gagal — reproduksi eksak butuh state fresh."
+    },
+    "C1_kode_peran_mentah": {
+      "status": "TERBUKTI (via inspeksi kode)",
+      "bukti": "AdminHome.jsx:212 → `${r.role ? ` · perlu ${r.role}` : \"\"}`. Tidak memakai roleLabel(r.role). Pada dokumen demo `required_approval_role` tampak kosong sehingga label tak tampak — tetapi setiap kali diisi 'manager'/'admin' UI akan menampilkan kode peran mentah. Inspeksi baris kode konklusif."
+    },
+    "C2_entitas_tak_disebut": {
+      "status": "TERBUKTI (via inspeksi kode + UI)",
+      "bukti": "AdminHome.jsx baris papan (203-227) tidak merender r.entity_id ataupun <EntityBadge/>. UI output: 'SORD-260824-0002 · Toko Kain Sejahtera / Sutra dobby ...' tanpa penanda badan usaha. Dalam mode 'Semua Entitas' baris papan tidak dapat dibedakan KSC vs Kanda."
+    },
+    "D1_pagar_bisa_dimatikan": {
+      "status": "TERBUKTI",
+      "bukti": "Impor scripts/guardrails/verify_home_kpi.check_payload langsung. Payload admin dengan approvals.all_items[special_order].count=2 TANPA kunci special_orders_waiting → 0 pelanggaran (HIJAU). `if isinstance(papan, dict)` (baris 251) melewatkan seluruh invarian H. Papan yang hilang tak tertangkap."
+    },
+    "B6_nomor_demo_bertanggal_hari_ini": {
+      "status": "TIDAK DIUKUR EMPIRIS (bukti tersedia via kode)",
+      "bukti": "Terlihat pada UI: SORD-260824-0002 (nomor bertanggal 24-08) muncul dgn days_waiting=9 hari. Karena penomoran memakai tanggal hari ini di generate_special_order_number, sedangkan created_at digeser 9 hari, keduanya inkonsisten pada demo — konsisten dengan klaim audit."
+    }
+  },
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/home/admin", "issue": "500 saat SATU dokumen special_orders punya total_amount bertipe string ('43.500.000') — seluruh Control Tower jatuh (B4)", "priority": "HIGH"},
+      {"endpoint": "/api/home/admin", "issue": "special_orders_waiting.rows[].days_waiting selalu dihitung dari created_at (submitted_at/approval_requested_at tak pernah ditulis) → papan MELEBIH-LEBIHKAN umur (B1)", "priority": "HIGH"},
+      {"endpoint": "/api/home/admin", "issue": "queue_detail sort by submitted_at (null di semua dokumen) → dokumen paling tua terpotong oleh limit(10) tanpa peringatan (B3)", "priority": "HIGH"},
+      {"endpoint": "/api/home/admin", "issue": "count=13 rows=10 tanpa field shown/truncated/has_more (B2)", "priority": "MED"},
+      {"endpoint": "job pengingat", "issue": "SATU dokumen memicu 2 notifikasi identik-tujuan (special_order_approval dari job _notify_pending_special_orders + approval_backlog dari approval_reminder) — kotak notifikasi berulang (A1/A2)", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminHome/Papan PO Custom", "issue": "Empty-state 'Tidak ada PO custom 🎉' render saat first-load gagal (customRows=[] karena data===null) — kegagalan tampil sebagai kabar baik (B5)", "selector": "[data-testid='admin-home-special-orders-empty']", "priority": "MED"},
+      {"component": "AdminHome/Papan PO Custom", "issue": "Kode peran mentah `· perlu manager` (bukan roleLabel) — AdminHome.jsx:212 (C1)", "selector": "[data-testid^='admin-home-special-order-']", "priority": "LOW"},
+      {"component": "AdminHome/Papan PO Custom", "issue": "Baris papan tidak menampilkan entitas (KSC/Kanda) — <EntityBadge/> tidak dipakai (C2)", "selector": "[data-testid^='admin-home-special-order-']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "guardrail_issues": [
+    {"file": "scripts/guardrails/verify_home_kpi.py:251", "issue": "check_payload melewatkan invarian H sepenuhnya jika payload TIDAK punya kunci special_orders_waiting → gate hijau padahal papan hilang (D1)", "priority": "HIGH"}
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_audit_findings_reproduction.py"
+  ],
+  "action_items": [
+    "B1: buang 'approval_requested_at'; tulis 'submitted_at' pada jalur pengajuan ATAU hitung umur dari entri status_history.pending_approval. Tambah invarian anti-tebak-field.",
+    "B2: kirim shown/truncated dari backend; UI tampilkan '…N lainnya'.",
+    "B3: sort by field yang PASTI ada (created_at) ATAU tiru pola _OLDEST_SCAN + sort di Python; tambah bukti-merah ≥ limit+1 dokumen.",
+    "B4: bungkus float() dengan try/except → 0.0; tambah verify_data_integrity untuk tipe total_amount.",
+    "B5: papan menyimpulkan 'tidak ada' HANYA bila data benar-benar terbaca (data !== null).",
+    "A1: SATU fungsi notification_service.notify_special_order_waiting(so) yang dipanggil endpoint + job. Pemeriksaan statik: nol pemakaian notif_type='special_order_approval' di luar fungsi itu.",
+    "A2: putuskan SATU pemilik pengingat. Uji 'dua job → maksimal SATU pesan per orang per dokumen per hari'.",
+    "C1: pakai roleLabel(r.role) di AdminHome.jsx:212.",
+    "C2: pakai <EntityBadge entityId={r.entity_id}/> di baris papan (hanya mode gabungan).",
+    "D1: keberadaan special_orders_waiting WAJIB untuk beranda admin di check_payload; tambah kasus self-test 'payload admin tanpa papan → merah'."
+  ],
+  "critical_code_review_comments": [
+    "AGING_META.since untuk special_order menyebut 'submitted_at' & 'approval_requested_at' — grep write path = NOL. Kelas 'field ditebak' yang sama tidak ditutup penjaga statik.",
+    "queue_detail (approval_backlog_service.py:361-397) menduplikasi pola sort+limit yang sudah pernah menyebabkan bug di oldest() — pola _OLDEST_SCAN diciptakan justru untuk kelas ini, tetapi tidak dipakai di queue_detail.",
+    "check_payload D1: pola `if isinstance(x, dict):` untuk field yang WAJIB ada adalah anti-pola pagar — bug kelas 'pagar dimatikan dengan menghapus data' harus ditutup dengan pemeriksaan 'kunci wajib ada untuk peran admin'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_audit_findings_reproduction.py (BARU — 6 test reproduksi audit)"
+  ],
+  "success_rate": {"backend": "100% (6/6 test lulus sebagai pembuktian)", "frontend": "N/A (verifikasi UI dilakukan, tidak ada test permanen)"},
+  "seed_data_creation": "Semua dokumen uji ber-flag _test_audit=TEST_AUDIT_2026_08_24 dan dihapus di fixture cleanup. Notifikasi dari job kembali dihapus manual. gate_residue.py --check PASS (nol residu) setelah semua pengukuran.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Aturan sesi ini: JANGAN memperbaiki. 9 dari 11 temuan yang diuji TERBUKTI (A1, A2, B1, B2, B3, B4, C1, C2, D1). B5 SEBAGIAN (terbukti via kode; reproduksi UI terhalang state stale saat refresh — first-load fresh butuh route intercept sebelum navigate). B6 tidak diuji empiris tetapi terlihat pada UI (SORD-260824-0002 · 9 hari). Test file bisa dipakai ulang sebagai regression: pytest /app/backend/tests/test_audit_findings_reproduction.py -v -s -o addopts=''",
+  "rca_ringkas": "Papan PO Custom baru mewarisi 4 kelas cacat klasik repo ini: (1) 'field ditebak' — AGING_META.since menyebut field yang tak pernah ditulis → umur salah + sort pecah + limit memotong yang paling penting; (2) 'duplikasi pesan' — dua tempat menyusun notif_type yang sama → satu diperbaiki yang lain tidak; (3) 'pagar bisa dimatikan' — isinstance-guard pada payload → hapus datanya, gate tetap hijau; (4) 'float mentah' — satu dokumen aneh menjatuhkan seluruh dasbor. Semuanya konsisten dengan diagnosis dokumen handoff."
+}

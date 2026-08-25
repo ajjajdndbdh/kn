@@ -1,0 +1,80 @@
+{
+  "summary": "FASE I (SPK INSPEKSI & QC) - Frontend Testing Completed. Verifikasi perilaku komponen bersama (KNSelect, ConfirmModal, FormModal) di peramban setelah gate.sh --full HIJAU 2x berturut (111 PASS/0 FAIL) dan POC FASE I 93/93.",
+  
+  "backend_issues": {
+    "critical_bugs": [],
+    "flaky_endpoints": [],
+    "notes": "Backend TIDAK DIUJI (sesuai instruksi) - sudah terbukti lewat POC FASE I 93/93 dan gate.sh --full 111 PASS/0 FAIL"
+  },
+  
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  
+  "passed_tests": [
+    "I.1 — SPK Inspeksi KSC/INS-00001 sudah ada (lahir otomatis), tugaskan petugas (ins-assign-select + ins-assign-bagian + ins-assign-button), tekan start (ins-start-button)",
+    "I.2 — Isi hasil pemeriksaan baris: cacat 4-point (ins-defect-1/2/3/4), GSM aktual 180.5 g/m², lebar aktual 145.2 cm, hasil warna Beda Shade (ins-color-select), handfeel Sesuai Sample (ins-handfeel-select), handfeel score 4, pratinjau poin 8, GRADE OTOMATIS muncul (A1 → A) dari poin cacat",
+    "I.3 — Tahanan warna: warehouse (Eko Prasetyo) TIDAK punya tombol lepas tahanan (sesuai keputusan pemilik #5), catatan 'menunggu keputusan manajer' muncul; manajer (Dewi Rahayu) PUNYA tombol lepas tahanan (ins-line-release-*), modal alasan wajib muncul (confirm-modal-reason), tombol DISABLED saat alasan < 15 huruf, AKTIF setelah >= 15 huruf, tahanan berhasil dilepas",
+    "I.4 — Keputusan menolak wajib beralasan: pilih keputusan 'Tolak' (ins-decision-select), klik Tutup SPK (ins-finish-button), modal alasan muncul, tombol confirm DISABLED saat alasan 'Tidak OK' (9 huruf < 15), AKTIF setelah alasan >= 15 huruf, alasan penolakan TERLIHAT DI DOKUMEN (ins-detail-reject-reason)",
+    "I.5 — Jejak dua arah: dokumen sumber (PO-00001) terlihat di detail panel, sample acuan terlihat (ins-detail-baseline), riwayat dokumen lengkap (ins-detail-history) dengan keputusan, aktor, waktu, dan alasan",
+    "BARU-1 — Pop-up Buat SPK (ins-create-button → ins-create-modal): pemilih jenis (ins-kind-select), pemilih dokumen sumber (ins-ref-select) menampilkan penanda 'sudah ada SPK KSC/INS-00002 (sudah diputuskan)' pada dokumen SRET-00001",
+    "REGRESI-A — KNSelect tidak meluap: dropdown ins-ref-select dengan label panjang ('SRET-00001 · Toko Kain Sejahtera · Warna tidak sesuai · sudah ada SPK...') TIDAK menembus tepi kanan modal, teks ter-ellipsis dengan benar (minWidth:0 fix bekerja)",
+    "REGRESI-D — Esc menutup lapisan teratas saja: buka modal Buat SPK, buka dropdown ins-ref-select, tekan Esc → dropdown tertutup, modal MASIH TERBUKA (isian tidak hilang)"
+  ],
+  
+  "test_report_links": [
+    ".screenshots/01_inspections_view.png",
+    ".screenshots/02_ins_detail_panel.png",
+    ".screenshots/03_after_assign_start.png",
+    ".screenshots/07_inspect_filled.png",
+    ".screenshots/08_warehouse_no_release.png",
+    ".screenshots/09_release_hold_reason.png",
+    ".screenshots/10_manager_after_release.png",
+    ".screenshots/11_reject_reason_modal.png",
+    ".screenshots/12_after_reject.png",
+    ".screenshots/13_jejak_dua_arah.png",
+    ".screenshots/14_knselect_no_overflow.png",
+    ".screenshots/15_create_spk_modal.png"
+  ],
+  
+  "action_item_for_main_agent": "TIDAK ADA — semua fitur FASE I yang diuji bekerja dengan benar. Test yang belum dilakukan (sesuai scope): BARU-2 (SPK dari hasil makloon), REGRESI-B (KNSelect di layar lain: Orders, PO, Pengaturan/Master), REGRESI-C (ConfirmModal di layar lain), REGRESI-E (pemilih ber-portal tidak terbuka kembali sendiri). Jika diperlukan, test tambahan dapat dilakukan pada sesi berikutnya.",
+  
+  "updated_files": [],
+  
+  "success_percentage": {
+    "backend": "N/A (tidak diuji sesuai instruksi - sudah terbukti POC 93/93)",
+    "frontend": "100% (8 dari 8 test yang dilakukan LULUS)"
+  },
+  
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_test_itself": false,
+  
+  "notes": {
+    "testing_scope": "Frontend only - backend sudah terbukti lewat POC FASE I 93/93 dan gate.sh --full 111 PASS/0 FAIL",
+    "test_credentials_used": [
+      "admin@kainnusantara.id / demo12345 (Budi Santoso)",
+      "manager@kainnusantara.id / demo12345 (Dewi Rahayu)",
+      "warehouse@kainnusantara.id / demo12345 (Eko Prasetyo)"
+    ],
+    "navigation_path": "nav-group-gudang → nav-wms-operations → hub-tab-inspections",
+    "entity_scope": "PT Kain Suka Cita (KSC) - dipilih via scope-pick-ent_ksc",
+    "test_document": "KSC/INS-00001 (Penerimaan PO, 1 baris DITAHAN)",
+    "key_validations": [
+      "SPK penerimaan PO lahir OTOMATIS (tidak dibuat dari nol)",
+      "Grade dihitung MESIN (qc_inspection_service + grade_service), bukan diketik",
+      "Warna beda dari sample = roll DITAHAN (keputusan pemilik #5)",
+      "Pelepas tahanan = MANAJER saja (warehouse tidak punya tombol)",
+      "Alasan wajib >= 15 huruf (MIN_REASON = 15, ditegakkan server DAN pop-up)",
+      "KNSelect minWidth:0 mencegah overflow di modal",
+      "Esc menutup lapisan teratas saja (dropdown tutup, modal tetap)"
+    ],
+    "not_tested_due_to_scope": [
+      "BARU-2 — SPK dari hasil makloon (tidak ada data demo makloon yang sudah menyerahkan hasil)",
+      "REGRESI-B — KNSelect di layar lain (Orders, PO, Pengaturan/Master)",
+      "REGRESI-C — ConfirmModal di layar lain",
+      "REGRESI-E — Pemilih ber-portal tidak terbuka kembali sendiri"
+    ]
+  }
+}
