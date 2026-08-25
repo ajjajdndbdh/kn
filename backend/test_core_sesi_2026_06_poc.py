@@ -57,7 +57,7 @@ PWD = "demo12345"
 G, R, Y, B, DIM, X = ("\033[92m", "\033[91m", "\033[93m", "\033[1m", "\033[2m", "\033[0m")
 TOUCHED = ["inventory_rolls", "journal_entries", "contra_bons", "interco_returns",
            "audit_logs", "sessions", "login_attempts", "inventory_lots",
-           "notifications"]
+           "notifications", "warehouse_transfers"]
 TANDA = "POC_SESI_2026_06"
 ENTITAS = "ent_ksc"
 NILAI_UJI = 900_000.0          # sama besarnya dengan drift `ent_kanda` yang dilaporkan
@@ -300,15 +300,130 @@ async def main() -> int:  # noqa: PLR0915
         ok("selectWaitingBoards(data, boardsUnreadable)" in mh
            and "selectWaitingBoards(data, boardsUnreadable)" in ah,
            "kedua beranda memakai SATU pemilih papan (B5 tak bisa hilang di satu layar)")
-        ok('return utama.length ? utama : [{ key: "special_order" }]' in pemilih,
-           "saat data tak terbaca pemilih tetap mengembalikan KERANGKA papan "
-           "(supaya 'tidak bisa dibaca' + Coba lagi terlihat)")
+        ok("return utama.length ? utama : [{ key: primaryKey }]" in pemilih
+           and 'primaryKey = "special_order"' in pemilih,
+           "saat data tak terbaca pemilih tetap mengembalikan KERANGKA papan utama "
+           "(supaya 'tidak bisa dibaca' + Coba lagi terlihat; papan utama bisa "
+           "berbeda per layar — sales/pemilik `special_order`, gudang `transfer`)")
         ok("manager-home-approvals-unreadable" in mh
            and "manager-home-late-unreadable" in mh,
            "Dasbor Manajer tidak lagi berbunyi 'Meja Anda bersih' saat gagal dimuat")
         ok('"Tidak bisa dibaca — coba muat ulang"' in ah,
            "KPI 'Persetujuan Menunggu' tidak lagi berbunyi 'Tidak ada yang menunggu' "
            "saat datanya gagal dibaca")
+
+        # ── G3b — papan dibawa ke MEJA KERJA (sales & gudang) ─────────────────
+        #  Papan hanya berguna bila ADA di layar orang yang bisa bertindak. Sebelum ini
+        #  papan hanya hidup di beranda pemilik & manajer: petugas gudang harus membuka
+        #  tab yang tepat untuk tahu ada tugas transfer menunggu ACC, dan orang sales
+        #  tidak punya satu pun layar yang berkata "pesananmu tertahan di tanda tangan".
+        print(f"\n{B}▶ G3b — papan antrean ada di meja SALES & GUDANG (koleksi yang benar){X}")
+        from services import approval_backlog_service as _abl
+        db.warehouse_transfers.insert_one({
+            "id": "trn_poc_sesi_2026_06", "code": "TRF-POC-0001",
+            "status": "waiting_approval", "entity_id": ENTITAS,
+            "notes": "Transfer uji POC papan gudang", "requested_by": "poc",
+            "created_at": hari_lalu(4), "_poc": TANDA})
+        sls = login("sales@kainnusantara.id")
+        whs = login("warehouse@kainnusantara.id")
+        ps = sls.get("/api/home/sales").json()
+        pw = whs.get("/api/home/warehouse").json()
+        ok([b["key"] for b in (ps.get("waiting_boards") or [])]
+           == ["special_order", "sales_order", "price"],
+           "beranda SALES memuat tiga papan meja penjualan",
+           f"{[b['key'] for b in (ps.get('waiting_boards') or [])]}")
+        ok([b["key"] for b in (pw.get("waiting_boards") or [])]
+           == ["transfer", "cycle_count", "inspection_hold"],
+           "layar GUDANG memuat tiga papan yang menahan barang",
+           f"{[b['key'] for b in (pw.get('waiting_boards') or [])]}")
+        ok(papan_of(ps, "special_order").get("count")
+           == papan_of(pa, "special_order").get("count"),
+           "angka PO custom di meja sales SAMA dengan Control Tower (satu SSOT)",
+           f"{papan_of(ps, 'special_order').get('count')}")
+        # Papan gudang WAJIB membaca koleksi & scope yang benar — dihitung ulang di sini
+        # dari definisi antrean, bukan dari angka yang dikirim layar.
+        scope = _abl._scope(ENTITAS)
+        for key in ("transfer", "cycle_count", "inspection_hold"):
+            _k, _l, _v, coll, q = next(x for x in _abl.QUEUES if x[0] == key)
+            n = db[coll].count_documents({**scope, **q})
+            ok(papan_of(pw, key).get("count") == n,
+               f"papan `{key}` menghitung koleksi `{coll}` yang benar",
+               f"layar={papan_of(pw, key).get('count')} db={n}")
+        b_trf = next((r for r in (papan_of(pw, "transfer").get("rows") or [])
+                      if r["number"] == "TRF-POC-0001"), {})
+        ok(b_trf.get("days_waiting") == 4,
+           "tugas gudang uji muncul dengan umur tunggu 4 hari (bukan 0)",
+           f"{b_trf.get('days_waiting')} hari")
+        db.warehouse_transfers.delete_many({"_poc": TANDA})
+        pw2 = whs.get("/api/home/warehouse").json()
+        ok(all(r["number"] != "TRF-POC-0001"
+               for r in (papan_of(pw2, "transfer").get("rows") or [])),
+           "BUKTI-MERAH: dokumen dihapus → hilang dari papan (papan tidak mengarang)")
+        for nama, layar in (("sales", "frontend/src/features/home/SalesHome.jsx"),
+                            ("gudang", "frontend/src/features/wms/OperationsView.jsx")):
+            src = (ROOT / layar).read_text(encoding="utf-8")
+            ok("WaitingQueueBoard" in src or "WaitingBoardsStrip" in src,
+               f"layar {nama} memakai komponen papan yang SAMA (nol salinan kedua)")
+
+        # KEBOCORAN NYATA yang ditemukan `audit_entity_isolation` saat papan ini lahir:
+        # keduanya meneruskan `entity_id=None` ke layanan, dan None = TANPA saringan →
+        # sales PT-B ikut melihat dokumen PT-A. Pagar ini menuduh kelasnya: papan baru
+        # WAJIB terkurung penugasan pemakainya, walau layar tidak mengirim header.
+        kanda = login("sales3@kainnusantara.id", entity="ent_kanda")
+        pk_s = kanda.get("/api/home/sales").json()
+        kanda_tanpa_header = httpx.Client(base_url=BASE, timeout=120.0,
+                                          headers=dict(kanda.headers))
+        kanda_tanpa_header.headers.pop("X-Entity-Id", None)
+        pk_w = kanda_tanpa_header.get("/api/home/warehouse").json()
+        bocor_s = {r.get("entity_id") for b in (pk_s.get("waiting_boards") or [])
+                   for r in (b.get("rows") or [])} - {"ent_kanda", "", None}
+        bocor_w = {r.get("entity_id") for b in (pk_w.get("waiting_boards") or [])
+                   for r in (b.get("rows") or [])} - {"ent_kanda", "", None}
+        ok(not bocor_s and not bocor_w,
+           "sales PT lain TIDAK melihat dokumen PT-A di papan (tanpa header pun)",
+           f"sales={bocor_s or 'nihil'} gudang={bocor_w or 'nihil'}")
+        tolak = kanda.get("/api/home/warehouse", params={"entity_id": ENTITAS})
+        ok(tolak.status_code == 403,
+           "meminta badan usaha yang bukan penugasannya DITOLAK 403 (bukan diam-diam kosong)",
+           f"HTTP {tolak.status_code}")
+
+        # ── G3c — PENJELAS selisih persediaan (bukan cuma "berapa") ───────────
+        print(f"\n{B}▶ G3c — penjelas selisih: di MANA selisihnya, dari koleksi aslinya{X}")
+        exp = adm.get("/api/gl/inventory-drift-explain",
+                      params={"entity_id": ENTITAS}).json()
+        rec_rows = (await gl_service.inventory_reconciliation())["rows"]
+        rec = next(r for r in rec_rows if r["entity_id"] == ENTITAS)
+        ok(abs(exp["subledger_value"] - rec["subledger_value"]) <= 0.01
+           and abs(exp["gl_balance"] - rec["gl_balance"]) <= 0.01,
+           "penjelas memakai angka yang SAMA dengan layar rekonsiliasi (satu rumus)",
+           f"fisik={exp['subledger_value']:,.0f} gl={exp['gl_balance']:,.0f}")
+        ok(abs(sum(o["value"] for o in exp["physical_by_origin"])
+               - exp["subledger_value"]) <= 0.05,
+           "rincian per ASAL menjumlah PAS ke nilai fisik (tak ada kategori hilang)")
+        ok(all(o["origin"] for o in exp["physical_by_origin"])
+           and any(o["rolls"] > 0 for o in exp["physical_by_origin"]),
+           "asal barang dibaca dari `inventory_rolls.acquired.via` yang nyata",
+           f"{[o['origin'] for o in exp['physical_by_origin']][:4]}")
+        ok(any(s["source"] == "inventory_opening" for s in exp["gl_by_source"]),
+           "mutasi GL dipecah per `journal_entries.source_type` (akun 1-1300)",
+           f"{[s['source'] for s in exp['gl_by_source']][:4]}")
+        db.inventory_rolls.insert_one({
+            "id": "roll_poc_explain_2026_06", "roll_no": "ROLL-POC-EXPLAIN",
+            "owner_entity_id": ENTITAS, "entity_id": ENTITAS, "status": "available",
+            "length_remaining": 100.0, "length_initial": 100.0, "unit": "yard",
+            "unit_cost": 1000.0, "acquired": {"via": "poc_asal_uji"},
+            "created_at": hari_lalu(0), "_poc": TANDA})
+        exp2 = adm.get("/api/gl/inventory-drift-explain",
+                       params={"entity_id": ENTITAS}).json()
+        tuduh = [s for s in exp2["suspects"] if s["kind"] == "asal_tak_dikenal"]
+        ok(bool(tuduh) and abs(tuduh[0]["value"] - 100_000.0) <= 0.01,
+           "asal barang yang tak punya pasangan jurnal DITUDUH beserta nilainya",
+           f"{tuduh[:1]}")
+        db.inventory_rolls.delete_many({"_poc": TANDA})
+        exp3 = adm.get("/api/gl/inventory-drift-explain",
+                       params={"entity_id": ENTITAS}).json()
+        ok(not [s for s in exp3["suspects"] if s["kind"] == "asal_tak_dikenal"],
+           "BUKTI-MERAH dua arah: roll dibuang → tuduhannya ikut hilang")
 
         # ── G4 — satu bentuk `status_history` ─────────────────────────────────
         print(f"\n{B}▶ G4 — `status_history[]` hanya punya SATU bentuk (INV-HIST-01){X}")
@@ -337,6 +452,7 @@ async def main() -> int:  # noqa: PLR0915
         db.inventory_rolls.delete_many({"_poc": TANDA})
         db.contra_bons.delete_many({"_poc": TANDA})
         db.interco_returns.delete_many({"_poc": TANDA})
+        db.warehouse_transfers.delete_many({"_poc": TANDA})
         db.journal_entries.delete_many(
             {"source_type": "inventory_opening", "source_id": {"$regex": r"#\d+$"}})
         snap.restore()

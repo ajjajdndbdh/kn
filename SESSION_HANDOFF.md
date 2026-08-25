@@ -9,6 +9,39 @@
 > `audit_md_erp_readiness` **SELESAI=96 · BELUM=0 · DRIFT=0** (sebelumnya 94/2/0).
 > Sebelumnya: 2026-08-24 (FASE I ditutup) · 2026-08-23 (FASE S) · 2026-08-21 (INV-REF-04).
 
+## SESI 2026-06 (lanjutan ke-2) — PAPAN DI MEJA KERJA · PENJELAS SELISIH · ISOLASI
+
+1. **Papan antrean dibawa ke layar kerja.** Meja SALES (`special_order`·`sales_order`·
+   `price`) & layar GUDANG (`transfer`·`cycle_count`·`inspection_hold`, komponen baru
+   `components/WaitingBoardsStrip.jsx`). Definisi "menunggu" & umur tunggu TETAP milik
+   `approval_backlog_service` — nol query baru, jadi angka di papan mustahil berselisih
+   dari Pusat Persetujuan. `selectWaitingBoards` sekarang menerima `primaryKey` (gudang
+   memakai `transfer`), jadi perilaku B5 ikut berlaku di layar baru.
+2. **`DETAIL_META`/`AGING_META` untuk antrean baru.** Field diperiksa dari dokumen nyata
+   (`inspections.started_at`/`supplier_name`, `cycle_count_sessions.warehouse_name`,
+   `sales_orders.grand_total`, `price_approvals.requested_price`,
+   `warehouse_transfers.transfer_price`). Sebelumnya judul baris berbunyi "—" dan
+   nilainya Rp 0 — angka yang tak bisa dipakai mengambil keputusan.
+3. **Penjelas selisih persediaan** `GET /api/gl/inventory-drift-explain?entity_id=`:
+   nilai fisik per **asal roll** (`inventory_rolls.acquired.via`) berdampingan dengan
+   mutasi GL per **sumber jurnal** (baris akun `1-1300`), plus "dugaan penyebab" yang
+   hanya menuduh dari fakta dokumen. True-up bukan lagi satu-satunya jawaban atas "kenapa".
+4. **Riwayat true-up difilter per badan usaha** (mode gabungan memberi lencana PT).
+5. **KEBOCORAN ISOLASI DITUTUP (penting).** `/api/home/sales` & `/api/home/warehouse`
+   meneruskan `entity_id=None` ke layanan, dan `None` = TANPA saringan → sales PT-B ikut
+   melihat dokumen PT-A di papan. Sekarang kosong = badan usaha AKTIF, dan `entity_id` di
+   luar penugasan dijawab **403** (`routers/home.py::_own_entity`).
+   `audit_entity_isolation`: MERAH (2 kebocoran) → **HIJAU**.
+6. `backend/requirements.txt`: baris `litellm @ <url>` + `emergentintegrations` yang
+   saling bentrok & tak dipakai DIBUANG (dulu memaksa `pip install -r` gagal).
+
+**Verifikasi:** `gate.sh --full` HIJAU 364 s · POC sesi 2026-06 **61 PASS · 0 FAIL** ·
+`verify_aging_fields` 152 cek · `audit_i18n_id` HIJAU (pakai `rupiah()` dari `core_utils`
+untuk semua nominal di pesan) · agen uji `iteration_250` nol temuan.
+
+---
+
+
 ## SESI 2026-06 (lanjutan) — B5 DITUTUP DI DASBOR MANAJER + LANJUTAN INV-GL-DRIFT
 
 ### 1. Regresi B5 masih bocor di Dasbor Manajer (temuan agen uji `iteration_248`)

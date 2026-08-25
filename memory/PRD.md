@@ -562,3 +562,30 @@ HIJAU · agen uji `iteration_249` **backend 100% · frontend 100% · nol temuan*
 - **P2** `INV-DB-SORD` baru memeriksa `special_orders.total_amount`; kolom uang koleksi lain masih bisa bertipe teks.
 - **P3** `queue_detail` memindai 200 dokumen lalu memotong di Python — antrean > 200 dokumen menunggu perlu paginasi sungguhan.
 - **P3** `backend/requirements.txt` memuat `litellm @ <url>` + `emergentintegrations` yang saling bentrok dan tidak dipakai kode ini — hapus supaya `pip install -r` bersih di kontainer baru.
+
+---
+
+## Sesi 2026-06 (lanjutan ke-2) — NEXT ACTION ITEMS DIKERJAKAN
+
+Permintaan user: *"ya lanjutkan next action items pastikan fungsional dan ambil dari
+collection data yang benar"*.
+
+| Item | Apa yang dibangun | Koleksi sumber (BENAR, diverifikasi) | Bukti |
+|---|---|---|---|
+| **Riwayat true-up per PT** | Riwayat di tab Rekonsiliasi difilter `entity_id`; mode "Semua Entitas" memberi lencana nama badan usaha per baris | `journal_entries` (`source_type=inventory_opening`) | agen uji `iteration_250`: KSC → hanya `KSC/JE-00021`; mode gabungan → 2 baris berlencana |
+| **Penjelas selisih** `GET /api/gl/inventory-drift-explain` + panel layar | Memecah KEDUA sisi: nilai fisik per **asal barang** vs mutasi GL per **sumber jurnal**, lalu menuduh kategori yang tak punya pasangan. Tidak menerbitkan jurnal | fisik: `inventory_rolls.acquired.via` (status & rumus SAMA dengan `inventory_reconciliation`) · GL: `journal_entries.lines` akun `1-1300` | POC G3c: rincian per asal menjumlah PAS ke nilai fisik; bukti-merah dua arah (roll asal tak dikenal → tertuduh, dibuang → tuduhan hilang) |
+| **Papan antrean di meja SALES** (`special_order`·`sales_order`·`price`) | Beranda Performa Saya kini menjawab "dokumen saya tertahan di tanda tangan siapa" | `special_orders`·`sales_orders`·`price_approvals` lewat `approval_backlog_service` (nol query baru) | POC G3b + peramban: SORD-260816-0001 Rp 43.500.000/9 hari, SO-0007 Rp 17.427.000 |
+| **Papan antrean di layar GUDANG** (`transfer`·`cycle_count`·`inspection_hold`) | `WaitingBoardsStrip` ditempel di atas tab Operasi; klik papan memindahkan tab yang benar | `warehouse_transfers`·`cycle_count_sessions`·`inspections` | POC G3b menghitung ulang tiap koleksi (layar=db) |
+| Judul & nilai baris papan baru berhenti berbunyi "—"/Rp 0 | `AGING_META['inspection_hold']` + `DETAIL_META` untuk 5 antrean, field diperiksa dari dokumen nyata | idem | `verify_aging_fields` 152 cek HIJAU |
+| **KEBOCORAN ISOLASI ditutup** | `/api/home/sales` & `/api/home/warehouse` dulu meneruskan `entity_id=None` = TANPA saringan → sales PT-B ikut melihat dokumen PT-A. Kosong = badan usaha AKTIF; di luar penugasan → **403** | `routers/home.py::_own_entity` | `audit_entity_isolation` dari **MERAH (2 kebocoran) → HIJAU**; POC G3b memagari kelasnya |
+| `requirements.txt` bersih | Baris `litellm @ <url>` + `emergentintegrations` yang saling bentrok & tak dipakai dibuang | — | `pip install -r` jalan di kontainer baru |
+
+**Verifikasi:** `gate.sh --full` **HIJAU 364 s** · POC sesi 2026-06 **61 PASS · 0 FAIL**
+(nol residu diukur) · `audit_i18n_id` HIJAU (label baru wajib Bahasa Indonesia + `rupiah()`)
+· agen uji `iteration_250` **backend 100% · frontend 100% · nol temuan**.
+
+### Backlog terprioritas berikutnya
+- **P2** `INV-AGING-01` baru menilai `AGING_META`; `DETAIL_META` (yang kini dipakai 8 antrean) belum diikat pagar yang sama.
+- **P2** Papan gudang belum punya jalan langsung ke SATU dokumen (klik baris membuka tab, bukan dokumennya).
+- **P2** Penjelas selisih belum menautkan tuduhan ke daftar roll/jurnal yang bisa diklik.
+- **P3** `queue_detail` memindai 200 dokumen lalu memotong di Python — antrean > 200 perlu paginasi sungguhan.

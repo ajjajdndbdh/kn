@@ -102,6 +102,10 @@ async def sales_home(sales_id: str, entity_id: Optional[str] = None) -> Dict[str
         "customers": cust_rows[:10],
         "collections": collections,
         "recent_orders": recent_orders,
+        # Papan antrean mahal versi SALES (2026-06) — sumber & umur tunggunya sama
+        # dengan papan pemilik/manajer (`approval_backlog_service`), jadi angka yang
+        # dilihat sales untuk dokumen yang sama tidak mungkin berbeda.
+        "waiting_boards": await _waiting_boards(entity_id, SALES_BOARD_KEYS),
     }
 
 
@@ -190,16 +194,39 @@ async def approval_backlog(entity_id: Optional[str]) -> Dict[str, Any]:
 #: Menunggu" — papan untuk semuanya sama saja dengan tidak punya papan.
 HOME_BOARD_KEYS = ("special_order", "contra_bon_dispute", "interco_return")
 
+#: SALES (2026-06) — yang MAHAL BILA MENUNGGU di meja penjualan: PO custom (kain sudah
+#: dipesan khusus), SO yang tertahan di ACC (pelanggan sudah dijanjikan tanggal), dan
+#: permintaan harga khusus (penawaran menggantung). Sebelum ini orang sales harus
+#: menebak apakah dokumennya sudah jalan atau masih menunggu tanda tangan orang lain.
+SALES_BOARD_KEYS = ("special_order", "sales_order", "price")
 
-async def _waiting_boards(entity_id: Optional[str]) -> List[Dict[str, Any]]:
-    """Papan antrean mahal untuk beranda pemilik & manajer (urutan tetap).
+#: GUDANG (2026-06) — keputusan yang menahan BARANG bergerak: tugas transfer menunggu
+#: ACC, stock opname menunggu ACC, dan barang yang ditahan QC (warna/handfeel) yang
+#: hanya manajer boleh lepas. Ketiganya sebelumnya hanya terlihat kalau petugas membuka
+#: tab yang tepat pada layar Operasi — barang bisa berhenti berhari-hari tanpa satu
+#: layar pun menyebutnya.
+WAREHOUSE_BOARD_KEYS = ("transfer", "cycle_count", "inspection_hold")
+
+
+async def _waiting_boards(entity_id: Optional[str],
+                          keys: tuple = HOME_BOARD_KEYS) -> List[Dict[str, Any]]:
+    """Papan antrean mahal untuk beranda (urutan tetap).
 
     Definisi "menunggu" + umur tunggunya tetap milik `approval_backlog_service`
-    (INV-HOME-01): beranda hanya MEMILIH antrean mana yang diberi papan.
+    (INV-HOME-01): beranda hanya MEMILIH antrean mana yang diberi papan. Karena itu
+    papan sales & gudang TIDAK membawa query sendiri — kalau membawa, angka di papan
+    bisa berselisih dari angka di Pusat Persetujuan untuk dokumen yang sama.
     """
     from services import approval_backlog_service as abl
 
-    return await abl.boards(list(HOME_BOARD_KEYS), entity_id, limit=10)
+    return await abl.boards(list(keys), entity_id, limit=10)
+
+
+async def warehouse_home(entity_id: Optional[Any] = None) -> Dict[str, Any]:
+    """Papan antrean gudang — dipakai layar Operasi (WMS) di atas tab-tabnya."""
+    boards = await _waiting_boards(entity_id, WAREHOUSE_BOARD_KEYS)
+    return {"waiting_boards": boards,
+            "total_waiting": sum(int(b.get("count") or 0) for b in boards)}
 
 
 async def _late_today(entity_id: Optional[str], ar_overdue: float = 0.0) -> Dict[str, Any]:

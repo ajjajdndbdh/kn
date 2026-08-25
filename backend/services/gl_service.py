@@ -18,7 +18,8 @@ import re
 from typing import Any, Dict, List, Optional
 
 from db import db
-from core_utils import new_id, now_iso, next_doc_number, safe_doc, DEFAULT_ENTITY_ID
+from core_utils import (new_id, now_iso, next_doc_number, safe_doc, rupiah,
+                        DEFAULT_ENTITY_ID)
 from services import costing_service
 from services.customer_service import (
     _order_grand_total as order_grand_total,
@@ -2492,6 +2493,130 @@ async def inventory_reconciliation() -> Dict[str, Any]:
     return {"rows": rows,
             "total_difference": round(sum(r["difference"] for r in rows), 2),
             "as_of": now_iso()}
+
+
+async def inventory_drift_explain(entity_id: str) -> Dict[str, Any]:
+    """PENJELAS SELISIH persediaan (lanjutan INV-GL-DRIFT, 2026-06).
+
+    KENAPA ADA: layar rekonsiliasi bisa berkata "berselisih Rp 900.000" tetapi tidak
+    bisa berkata **di mana**. Satu-satunya tombol yang tersedia lalu berupa true-up —
+    menyamakan angka tanpa tahu penyebabnya, yang artinya cacat aslinya tetap hidup dan
+    akan melahirkan selisih berikutnya. Modul ini tidak MENEBAK: ia memecah kedua sisi
+    memakai field yang benar-benar ada di dokumennya, lalu menaruhnya berdampingan.
+
+    Sisi FISIK dari koleksi `inventory_rolls` (`acquired.via` → asal barang), dipotong
+    dengan status & rumus nilai yang SAMA dengan `inventory_reconciliation()` supaya
+    totalnya tak mungkin berbeda dari angka di layar. Sisi GL dari baris jurnal
+    berakun `1-1300` (`journal_entries.lines`), dikelompokkan per `source_type`.
+    """
+    ent = await db.business_entities.find_one(
+        {"id": entity_id}, {"_id": 0, "id": 1, "name": 1, "legal_name": 1}) or {}
+    rolls = await db.inventory_rolls.find(
+        {"owner_entity_id": entity_id, "status": {"$in": PHYSICAL_ROLL_STATUSES}},
+        {"_id": 0, "roll_no": 1, "length_remaining": 1, "unit_cost": 1,
+         "base_unit_cost": 1, "acquired": 1, "origin_type": 1}).to_list(100000)
+
+    per_origin: Dict[str, Dict[str, Any]] = {}
+    zero_cost: Dict[str, Any] = {"count": 0, "length": 0.0, "examples": []}
+    subledger = 0.0
+    for r in rolls:
+        via = str(((r.get("acquired") or {}).get("via")
+                   or r.get("origin_type") or "tidak tercatat"))
+        cost = float(r.get("unit_cost") or r.get("base_unit_cost") or 0)
+        length = float(r.get("length_remaining", 0) or 0)
+        value = round(length * cost, 2)
+        subledger += value
+        slot = per_origin.setdefault(via, {"origin": via, "rolls": 0, "value": 0.0})
+        slot["rolls"] += 1
+        slot["value"] = round(slot["value"] + value, 2)
+        if cost <= 0:
+            zero_cost["count"] += 1
+            zero_cost["length"] = round(zero_cost["length"] + length, 2)
+            if len(zero_cost["examples"]) < 5:
+                zero_cost["examples"].append(r.get("roll_no") or "(tanpa nomor)")
+
+    gl_by_source: Dict[str, float] = {}
+    async for je in db.journal_entries.find(
+            {"entity_id": entity_id, "lines.account_code": ACC_PERSEDIAAN,
+             "status": {"$ne": "void"}},
+            {"_id": 0, "source_type": 1, "lines": 1}):
+        for line in je.get("lines", []):
+            if line.get("account_code") != ACC_PERSEDIAAN:
+                continue
+            key = str(je.get("source_type") or "tanpa sumber")
+            gl_by_source[key] = round(
+                gl_by_source.get(key, 0.0)
+                + float(line.get("debit") or 0) - float(line.get("credit") or 0), 2)
+
+    led = await account_ledger(ACC_PERSEDIAAN, scope={"entity_id": entity_id})
+    gl_balance = round(float((led or {}).get("balance", 0) or 0), 2)
+    subledger = round(subledger, 2)
+    difference = round(subledger - gl_balance, 2)
+
+    #: Asal barang → jenis jurnal yang SEHARUSNYA menemaninya. Dipakai hanya untuk
+    #: menuduh "asal ini tidak punya jurnal pasangan", bukan untuk menghitung angka.
+    expected = {
+        "initial": ("inventory_opening",),
+        "inbound": ("goods_receipt", "landed_cost"),
+        "transfer": ("interco_transaction", "interco_return"),
+        "production_output": ("production_output",),
+        "subcon_receipt": ("subcon_receipt",),
+        "subcon_receipt_byproduct": ("subcon_receipt",),
+        "return": ("sales_return", "interco_return"),
+    }
+    suspects: List[Dict[str, Any]] = []
+    for slot in sorted(per_origin.values(), key=lambda s: -s["value"]):
+        srcs = expected.get(slot["origin"])
+        if not srcs:
+            suspects.append({
+                "kind": "asal_tak_dikenal", "value": slot["value"],
+                "label": f"Roll dengan asal '{slot['origin']}' ({slot['rolls']} roll)",
+                "hint": "Asal ini belum punya pasangan jenis jurnal yang diketahui — "
+                        "periksa pembuat roll-nya sebelum true-up."})
+            continue
+        if slot["value"] > 0 and not any(abs(gl_by_source.get(s, 0.0)) > 0 for s in srcs):
+            suspects.append({
+                "kind": "tanpa_jurnal", "value": slot["value"],
+                "label": (f"Barang dari '{slot['origin']}' bernilai "
+                          f"{rupiah(slot['value'])} ({slot['rolls']} roll)"),
+                "hint": f"Tidak ada jurnal {' / '.join(srcs)} di buku ini — "
+                        "barangnya masuk gudang tanpa jurnal pasangannya."})
+    if zero_cost["count"]:
+        suspects.append({
+            "kind": "roll_tanpa_hpp", "value": 0.0,
+            "label": f"{zero_cost['count']} roll aktif tanpa HPP "
+                     f"({zero_cost['length']:,.0f} unit)".replace(",", "."),
+            "hint": "Roll ber-HPP nol membuat nilai FISIK lebih kecil dari GL. "
+                    f"Contoh: {', '.join(zero_cost['examples'])}."})
+    opening = gl_by_source.get("inventory_opening", 0.0)
+    if opening:
+        suspects.append({
+            "kind": "true_up_sebelumnya", "value": opening,
+            "label": f"GL sudah pernah disamakan manual (true-up) {rupiah(opening)}",
+            "hint": "Bagian ini bukan hasil transaksi — ia hasil penyesuaian orang. "
+                    "Lihat riwayat true-up untuk dasarnya."})
+    by_source_total = round(sum(gl_by_source.values()), 2)
+    if abs(by_source_total - gl_balance) > 0.01:
+        suspects.append({
+            "kind": "jurnal_di_luar_rincian", "value": round(gl_balance - by_source_total, 2),
+            "label": "Ada saldo GL yang tidak terwakili rincian sumber di atas",
+            "hint": "Kemungkinan jurnal manual/anulir yang bentuknya berbeda — buka Buku "
+                    "Besar akun 1-1300."})
+    if 0 < abs(difference) <= 1:
+        suspects.append({
+            "kind": "pembulatan", "value": difference,
+            "label": "Selisihnya di bawah Rp 1 — pembulatan sen",
+            "hint": "Tidak perlu true-up; ambang peringatan sudah menyaringnya."})
+
+    return {
+        "entity_id": entity_id,
+        "entity_name": ent.get("legal_name") or ent.get("name") or entity_id,
+        "subledger_value": subledger, "gl_balance": gl_balance, "difference": difference,
+        "physical_by_origin": sorted(per_origin.values(), key=lambda s: -s["value"]),
+        "gl_by_source": sorted(({"source": k, "net": v} for k, v in gl_by_source.items()),
+                               key=lambda s: -abs(s["net"])),
+        "zero_cost_rolls": zero_cost, "suspects": suspects, "as_of": now_iso(),
+    }
 
 
 async def post_inventory_opening_balance(actor_name: str = "system",

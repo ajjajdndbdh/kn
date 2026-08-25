@@ -231,6 +231,19 @@ async def gl_inventory_reconciliation(request: Request) -> Dict[str, Any]:
     return await gl_service.inventory_reconciliation()
 
 
+@router.get("/gl/inventory-drift-explain")
+async def gl_inventory_drift_explain(request: Request,
+                                     entity_id: str = Query(...)) -> Dict[str, Any]:
+    """PENJELAS selisih persediaan satu badan usaha — di mana selisihnya, bukan cuma berapa.
+
+    Angkanya dipecah dari koleksi yang sesungguhnya: `inventory_rolls` (`acquired.via`)
+    di sisi fisik dan baris jurnal berakun 1-1300 (`journal_entries.lines`) di sisi GL.
+    Tidak ada tebakan dan tidak ada jurnal yang diterbitkan di sini.
+    """
+    await require_permission(request, "accounting", "view")
+    return await gl_service.inventory_drift_explain(entity_id)
+
+
 @router.post("/gl/inventory-opening-balance")
 async def gl_inventory_opening_balance(request: Request,
                                        reason: str = Query("", max_length=500)) -> Dict[str, Any]:

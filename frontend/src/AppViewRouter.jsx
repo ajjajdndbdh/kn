@@ -382,7 +382,7 @@ export default function AppViewRouter(props) {
       {activeView === "rfq" && <RFQView currentUser={user} selectedEntity={selectedEntity} />}
       {activeView === "purchase-requisitions" && <PurchaseRequisitions currentUser={user} selectedEntity={selectedEntity} />}
       {activeView === "reorder" && <ReorderSuggestions currentUser={user} selectedEntity={selectedEntity} />}
-      {activeView === "operations" && <OperationsView data={data} movements={movements} tasks={tasks} entities={entities} selectedEntity={selectedEntity} onGenerateLabel={generateLabel} onCreateInboundTask={createInboundTask} onCreateOutboundTasks={createOutboundTasks} onScanTask={scanTask} onAdvanceTask={advanceTask} onShowDetail={setActiveDetail} token={token} user={user} defaultTab={wmsInitialTab} />}
+      {activeView === "operations" && <OperationsView data={data} movements={movements} tasks={tasks} entities={entities} selectedEntity={selectedEntity} onGenerateLabel={generateLabel} onCreateInboundTask={createInboundTask} onCreateOutboundTasks={createOutboundTasks} onScanTask={scanTask} onAdvanceTask={advanceTask} onShowDetail={setActiveDetail} onNavigate={(target) => onNavSelect(target, target)} token={token} user={user} defaultTab={wmsInitialTab} />}
       {activeView === "qc-inspection" && <QCInspection currentUser={user} selectedEntity={selectedEntity} />}
       {activeView === "inspections" && <InspectionsView currentUser={user} selectedEntity={selectedEntity} />}
       {activeView === "hr-employees" && <EmployeesView currentUser={user} selectedEntity={selectedEntity} />}

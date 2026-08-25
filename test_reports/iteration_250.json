@@ -1,0 +1,21 @@
+{
+  "summary": "Verified iteration 250 fitur baru: (1) papan Sales & Warehouse di beranda peran, (2) B5 unreadable+retry pada kedua beranda, (3) PENJELAS SELISIH persediaan (recon-explain-panel), (4) filter recon-history per badan usaha + mode Semua Entitas dengan badge, (5) isolasi antar-PT (Kanda sales, cross-entity 403 warehouse). Backend 5/5 lulus. Frontend semua target hijau.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_home_boards_and_drift.py",
+    "/app/test_reports/pytest/iter250.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "recon-history-entity-<id> memakai <journal_entry_id> (bukan <entity_id>) — sesuai konteks Semua Entitas (baris = per jurnal), namun spesifikasi permintaan menulis '<id>' tanpa menegaskan. Perilaku baik; jika ingin lebih eksplisit dokumentasikan bahwa suffix = je_id."
+  ],
+  "updated_files": ["/app/backend/tests/test_home_boards_and_drift.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@ / sales@ (KSC) / sales3@ (Kanda) / warehouse@ · demo12345",
+  "seed_data_creation": "Tidak ada — hanya pemanggilan API baca; nol residu.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "SEMUA fitur iterasi ini lulus:\n- GET /api/home/warehouse returns 200 dengan boards {transfer,cycle_count,inspection_hold}; cross-entity (sales3 → entity_id=ent_ksc) DIJAWAB 403.\n- GET /api/home/sales sales@ berisi boards {special_order:SORD-260816-0001 Rp 43.500.000/9 hari, sales_order:SO-0007 Rp 17.427.000, price:2 permintaan}. sales3 (Kanda) TIDAK memuat SORD-260816-0001/SO-0007.\n- GET /api/gl/inventory-drift-explain?entity_id=ent_ksc returns keys physical_by_origin (initial/inbound/subcon_receipt/transfer/production_output/subcon_receipt_byproduct total=Rp 582.368.600 sama dengan tabel), gl_by_source (10 sumber termasuk inventory_opening, sales_cogs, subcon_receipt, dst), suspects.\n- WMS OperationsView: wms-home-boards visible di atas tab; klik transfer → route ?view=operations (tab aktif Transfer); cycle_count → tab Stock Opname. Judul inspection_hold menampilkan nama Cirebon Craft & Toko Kain Sejahtera (bukan '—').\n- SalesHome: sales-home-boards visible; block **/api/home/sales lalu klik sales-home-refresh → sales-home-board-special_order-unreadable + -retry TAMPIL sedangkan wrapper sales-home-board-special_order tetap ada (kontainer). Retry setelah unroute memuat data nyata.\n- WMS OperationsView B5: block **/api/home/warehouse + reload → wms-home-board-transfer-unreadable + retry tampil; retry memuat data nyata.\n- InventoryReconTab: konteks KSC → judul recon-history 'TRUE-UP TERAKHIR (5 JURNAL) · PT KAIN SUKA CITA' hanya KSC/JE-00021. Klik 'Kenapa berselisih?' (recon-explain-ent_ksc) → recon-explain-panel-ent_ksc tampil dengan 3 blok; klik lagi → panel tertutup.\n- Konteks Semua Entitas (entity-option-all) → judul '· SEMUA BADAN USAHA'; 2 baris (KSC/JE-00021 + KANDA/JE-00007); tiap baris berlencana recon-history-entity-<je_id> (PT Kain Suka Cita / CV Kanda Suka).",
+  "rca of the issue": "Tidak ada bug; iterasi verifikasi murni."
+}

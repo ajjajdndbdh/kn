@@ -280,6 +280,13 @@ AGING_META: Dict[str, Dict[str, List[str]]] = {
                          "title": ["customer_name", "method"]},
     "so_verify": {"since": ["created_at"], "number": ["number"],
                   "title": ["customer_name", "sales_name"]},
+    # 2026-06 — antrean ini dipakai papan GUDANG. Fieldnya diperiksa langsung dari
+    # dokumen `inspections` nyata: `started_at` ada di tiap SPK yang sudah dikerjakan,
+    # dan judulnya memakai nama pemasok/pelanggan + nomor dokumen asalnya supaya
+    # petugas tahu barang SIAPA yang ditahan (sebelum ini judulnya "—").
+    "inspection_hold": {"since": ["started_at", "spk_date", "created_at"],
+                        "number": ["number"],
+                        "title": ["supplier_name", "customer_name", "ref_doc_number"]},
 }
 
 
@@ -380,6 +387,32 @@ DETAIL_META: Dict[str, Dict[str, List[str]]] = {
     "interco_return": {
         "amount": ["grand_total", "subtotal"],
         "note": ["reason", "notes"],
+    },
+    # ── Papan meja SALES & GUDANG (2026-06) ─────────────────────────────────
+    # Field DIVERIFIKASI dari dokumen nyata di basis data (bukan ditebak — INV-AGING-01):
+    # `sales_orders.grand_total`/`required_approval_role`, `price_approvals.requested_price`,
+    # `warehouse_transfers.transfer_price`, `cycle_count_sessions.warehouse_name`,
+    # `inspections.bagian`. Tanpa baris ini papan baru menampilkan "—" dan Rp 0 —
+    # angka yang tidak bisa dipakai orang mengambil keputusan.
+    "sales_order": {
+        "amount": ["grand_total", "total_amount"],
+        "note": ["sales_name", "notes"],
+        "role": ["required_approval_role"],
+    },
+    "price": {
+        "amount": ["requested_price", "normal_price"],
+        "note": ["reason", "customer_name"],
+    },
+    "transfer": {
+        # `note` sengaja TIDAK diisi: judul barisnya sudah memakai `notes` (AGING_META),
+        # dan menampilkan teks yang sama dua kali membuat papan terasa berisik.
+        "amount": ["transfer_price"],
+    },
+    "cycle_count": {
+        "note": ["warehouse_name", "notes"],
+    },
+    "inspection_hold": {
+        "note": ["bagian", "assigned_name"],
     },
 }
 

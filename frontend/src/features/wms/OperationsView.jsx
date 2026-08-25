@@ -5,6 +5,7 @@ import InboundScanInterface from "./InboundScanInterface";
 import OutboundScanInterface from "./OutboundScanInterface";
 import TransferManagement from "./TransferManagement";
 import CycleCount from "../inventory/CycleCount";
+import WaitingBoardsStrip from "../../components/WaitingBoardsStrip";
 import { can } from "../../config/roles";
 
 export default function OperationsView({
@@ -19,6 +20,7 @@ export default function OperationsView({
   onScanTask,
   onAdvanceTask,
   onShowDetail,
+  onNavigate,
   token,
   user,
   defaultTab,
@@ -54,6 +56,16 @@ export default function OperationsView({
     : (visibleTabs[0]?.id || "stok");
   return (
     <div data-testid="operations-view">
+      {/* Papan keputusan yang MENAHAN BARANG (2026-06) — ditempel di atas tab supaya
+          terlihat di tab mana pun petugas berada. Angkanya milik backend. */}
+      <WaitingBoardsStrip endpoint="/home/warehouse" entityId={selectedEntity}
+        primaryKey="transfer" testIdPrefix="wms-home"
+        onNavigate={(view, key) => {
+          const tab = { transfer: "transfer", cycle_count: "cycle" }[key];
+          if (tab) setWmsTab(tab);
+          else if (onNavigate) onNavigate(view);
+        }} />
+
       {/* Tab Bar */}
       <div className="flex items-center gap-0.5 overflow-x-auto pb-0 mb-3 border-b border-[#EFF0F2]">
         {visibleTabs.map(tab => {

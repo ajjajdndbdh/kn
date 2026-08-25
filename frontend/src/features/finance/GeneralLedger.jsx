@@ -133,7 +133,7 @@ export default function GeneralLedger({ selectedEntity, entities = [] }) {
           {tab === "journal" && <JournalTab refreshKey={refreshKey} onChanged={refreshAll} onError={setError} entities={entities} selectedEntity={selectedEntity} />}
           {tab === "trial" && <TrialBalanceTab refreshKey={refreshKey} onError={setError} onDrill={(code) => { setTab("ledger"); setLedgerCode(code); }} />}
           {tab === "ledger" && <LedgerTab accounts={accounts} refreshKey={refreshKey} code={ledgerCode} setCode={setLedgerCode} onError={setError} />}
-          {tab === "recon" && <InventoryReconTab refreshKey={refreshKey} onError={setError} onNotice={setNotice} onChanged={refreshAll} />}
+          {tab === "recon" && <InventoryReconTab refreshKey={refreshKey} onError={setError} onNotice={setNotice} onChanged={refreshAll} selectedEntity={selectedEntity} entities={entities} />}
           {tab === "suspense" && <SuspensePanel refreshKey={refreshKey} accounts={accounts} entities={entities} selectedEntity={selectedEntity} onNotice={setNotice} onChanged={refreshAll} />}
         </div>
       </div>

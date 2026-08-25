@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import axios, { API } from "../../services/apiClient";
 import ErrorNotice from "../../components/ErrorNotice";
+import WaitingQueueBoard from "../../components/WaitingQueueBoard";
+import { boardLook, selectWaitingBoards } from "../../config/waitingBoards";
 
 const fmt = new Intl.NumberFormat("id-ID");
 const fmtCur = (v) => `Rp ${fmt.format(Math.round(v || 0))}`;
@@ -69,6 +71,8 @@ export default function SalesHome({ token, user, onNavigate }) {
     period: (h.period || "").slice(5),
     incentive: h.total_incentive ?? h.commission ?? 0,
   }));
+  const boardsUnreadable = !loading && (!data || !!error);
+  const boards = selectWaitingBoards(data, boardsUnreadable);
 
   return (
     <section data-testid="sales-home" className="section-card">
@@ -86,6 +90,23 @@ export default function SalesHome({ token, user, onNavigate }) {
 
       <div className="section-body">
         <ErrorNotice message={error} onRetry={load} onDismiss={() => setError("")} testId="sales-home-error" />
+
+        {/* Papan antrean mahal versi SALES (2026-06) — dokumen SAYA yang tertahan di
+            tanda tangan orang lain. Pemilihan papan & keadaan "tidak bisa dibaca"
+            memakai fungsi bersama dengan Control Tower/Dasbor Manajer (regresi B5). */}
+        <div className="mb-3 grid gap-2" data-testid="sales-home-boards">
+          {boards.map((b) => {
+            const look = boardLook(b.key);
+            return (
+              <WaitingQueueBoard key={b.key} board={b} loading={loading && !data}
+                unreadable={boardsUnreadable} onRetry={load} onNavigate={onNavigate}
+                icon={look.icon} accent={look.accent} gotoLabel={look.goto}
+                emptyText={look.empty} title={look.title}
+                testIdBase={`sales-home-board-${b.key}`}
+                rowTestIdBase={`sales-home-board-${b.key}-row`} />
+            );
+          })}
+        </div>
 
         {/* KPI */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
