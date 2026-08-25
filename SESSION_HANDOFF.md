@@ -9,6 +9,34 @@
 > `audit_md_erp_readiness` **SELESAI=96 · BELUM=0 · DRIFT=0** (sebelumnya 94/2/0).
 > Sebelumnya: 2026-08-24 (FASE I ditutup) · 2026-08-23 (FASE S) · 2026-08-21 (INV-REF-04).
 
+## SESI 2026-06 (lanjutan ke-3) — PEMBUKTIAN FUNGSIONAL + LONCENG KRITIS LINTAS PT
+
+1. **Semua fitur sesi sebelumnya dibuktikan berjalan** (bukan hanya tampil): navigasi
+   papan sales 3/3 & gudang 3/3 (tab Transfer / Stock Opname aktif, Inspeksi terbuka),
+   job pemantau drift `success` dengan notifikasi nyata ke 3 pemegang `accounting.manage`,
+   dedupe harian, nol jurnal terbit.
+2. **Penjelas selisih sekarang MENUNJUK dokumen**: suspect `nilai_cocok_selisih`
+   (roll yang nilainya PERSIS sebesar selisih + dokumen sumbernya) dan
+   `selisih_belum_terjelaskan` (3 roll terbaru) — sebelumnya selisih bisa berakhir tanpa
+   satu pun dokumen untuk diperiksa.
+3. **CACAT NYATA DITUTUP — peringatan yang tak pernah terbaca.** Notifikasi drift milik
+   CV Kanda Suka tak terlihat di lonceng selagi pemilih konteks menunjuk KSC.
+   `routers/notifications.py::_scope_query` kini (a) meneruskan `entity_id=all` apa adanya
+   dan (b) mengangkat notifikasi **`severity=critical`** untuk badan usaha yang memang
+   PENUGASAN pengguna. Isolasi tak dilonggarkan: non-kritis tetap tersaring, sales PT lain
+   tetap nol, `mark_read` lintas PT tetap 404. Pagar barunya di POC sesi 2026-06.
+4. **`INV-GL-DRIFT` akar masalahnya MASIH TERBUKA** (P1) dan sekarang punya alamat pasti:
+   roll `RTN-00001` (retur antar-PT `KSC/ICR-00002` / transfer `KSC/TRF-00005`) mendarat di
+   buku Kanda bernilai Rp 900.000 tanpa jurnal `interco_return:…:goods_in`. Periksa
+   `interco_return_service.on_return_task_executed` (urutan baca roll vs pemindahan
+   kepemilikan) — `cost_back` terbaca 0 sehingga `_post_goods_gl` melewati jurnalnya.
+
+**Verifikasi:** gate.sh --full HIJAU 362 s · POC sesi 2026-06 66 PASS · POC isolasi E-0
+83 PASS · agen uji `iteration_251` & `iteration_252` nol temuan.
+
+---
+
+
 ## SESI 2026-06 (lanjutan ke-2) — PAPAN DI MEJA KERJA · PENJELAS SELISIH · ISOLASI
 
 1. **Papan antrean dibawa ke layar kerja.** Meja SALES (`special_order`·`sales_order`·

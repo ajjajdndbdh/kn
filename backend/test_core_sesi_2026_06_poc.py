@@ -171,6 +171,10 @@ async def main() -> int:  # noqa: PLR0915
         #  bergunanya dengan yang tak pernah berteriak).
         print(f"\n{B}▶ G1b — drift diberitahukan sendiri + alasan true-up sampai ke jurnal{X}")
         from services import inventory_drift_watch as invdrift
+        # Dedupe-nya HARIAN, jadi pesan yang sudah lahir hari ini (mis. dari job nyata
+        # atau drift buku lain) membuat cek "pemantau memberi tahu" jadi bergantung
+        # urutan. Bersihkan dulu — `DbSnapshot` yang memulihkannya di akhir POC.
+        db.notifications.delete_many({"ref": {"$regex": "^inventory_drift:"}})
         db.inventory_rolls.insert_one({
             "id": "roll_poc_drift_2026_06", "roll_no": "ROLL-POC-DRIFT",
             "owner_entity_id": ENTITAS, "entity_id": ENTITAS, "status": "available",
@@ -214,7 +218,31 @@ async def main() -> int:  # noqa: PLR0915
            f"{[r['entity_id'] for r in sesudah_beres['rows']]}")
         db.notifications.delete_many({"ref": {"$regex": "^inventory_drift:"}})
 
-        # bersihkan G1: roll uji + jurnal true-up yang lahir karenanya
+        # Peringatan KRITIS badan usaha LAIN wajib tetap terlihat pemilik yang
+        # berwenang atas kedua buku — kalau tidak, pemantau ini menulis pesan yang
+        # tak pernah dibaca siapa pun (kegagalan yang paling tenang).
+        db.notifications.insert_many([
+            {"id": "ntf_poc_kritis", "type": "poc_uji", "entity_id": "ent_kanda",
+             "recipient_user": "user_admin_01", "recipient_role": "",
+             "title": "POC kritis buku lain", "body": "-", "severity": "critical",
+             "read": False, "created_at": hari_lalu(0), "_poc": TANDA},
+            {"id": "ntf_poc_biasa", "type": "poc_uji", "entity_id": "ent_kanda",
+             "recipient_user": "user_admin_01", "recipient_role": "",
+             "title": "POC biasa buku lain", "body": "-", "severity": "warning",
+             "read": False, "created_at": hari_lalu(0), "_poc": TANDA}])
+        lonceng_ksc = login("admin@kainnusantara.id", entity=ENTITAS)
+        lonceng = lonceng_ksc.get("/api/notifications").json()
+        judul = {n.get("title") for n in lonceng}
+        ok("POC kritis buku lain" in judul,
+           "pemilik melihat peringatan KRITIS buku lain walau konteksnya KSC")
+        ok("POC biasa buku lain" not in judul,
+           "peringatan BIASA buku lain tetap tersaring konteks (isolasi tak dilonggarkan)")
+        knd = login("sales3@kainnusantara.id", entity="ent_kanda")
+        asing = [n["id"] for n in knd.get("/api/notifications").json()
+                 if n.get("entity_id") not in (None, "", "ent_kanda")]
+        ok(not asing, "sales badan usaha lain TETAP tidak melihat notifikasi PT-A",
+           f"{asing[:3]}")
+        db.notifications.delete_many({"_poc": TANDA})
         db.inventory_rolls.delete_many({"_poc": TANDA})
         db.journal_entries.delete_many(
             {"source_type": "inventory_opening",
@@ -424,6 +452,30 @@ async def main() -> int:  # noqa: PLR0915
                        params={"entity_id": ENTITAS}).json()
         ok(not [s for s in exp3["suspects"] if s["kind"] == "asal_tak_dikenal"],
            "BUKTI-MERAH dua arah: roll dibuang → tuduhannya ikut hilang")
+
+        # Selisih WAJIB berujung pada dokumen, bukan berhenti di "ada selisih". Roll
+        # uji dibuat bernilai PERSIS sebesar selisih yang ia timbulkan sendiri, jadi
+        # penjelas harus bisa menunjuk satu nomor roll — inilah yang membedakan
+        # "true-up buta" dari "periksa dokumen ini dulu".
+        db.inventory_rolls.insert_one({
+            "id": "roll_poc_tunjuk_2026_06", "roll_no": "ROLL-POC-TUNJUK",
+            "owner_entity_id": ENTITAS, "entity_id": ENTITAS, "status": "available",
+            "length_remaining": 5.0, "length_initial": 5.0, "unit": "yard",
+            "unit_cost": 40_000.0, "acquired": {"via": "inbound", "ref_id": "po_poc_uji",
+                                                "date": hari_lalu(1)},
+            "created_at": hari_lalu(1), "_poc": TANDA})
+        exp4 = adm.get("/api/gl/inventory-drift-explain",
+                       params={"entity_id": ENTITAS}).json()
+        tunjuk = [s for s in exp4["suspects"] if s["kind"] == "nilai_cocok_selisih"]
+        ok(bool(tunjuk) and "ROLL-POC-TUNJUK" in tunjuk[0]["label"]
+           and "po_poc_uji" in tunjuk[0]["hint"],
+           "roll yang nilainya PERSIS sebesar selisih ditunjuk beserta dokumen sumbernya",
+           f"{tunjuk[:1]}")
+        db.inventory_rolls.delete_many({"_poc": TANDA})
+        exp5 = adm.get("/api/gl/inventory-drift-explain",
+                       params={"entity_id": ENTITAS}).json()
+        ok(not [s for s in exp5["suspects"] if s["kind"] == "nilai_cocok_selisih"],
+           "BUKTI-MERAH: roll dibuang → penunjukan itu ikut hilang (bukan tuduhan abadi)")
 
         # ── G4 — satu bentuk `status_history` ─────────────────────────────────
         print(f"\n{B}▶ G4 — `status_history[]` hanya punya SATU bentuk (INV-HIST-01){X}")

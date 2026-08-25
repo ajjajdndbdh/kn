@@ -1,0 +1,22 @@
+{
+  "summary": "Iteration 252 — verifikasi PERBAIKAN lonceng lintas badan usaha (KSC melihat notifikasi KRITIS milik CV Kanda Suka). Backend 9/9 lulus pada /app/backend/tests/test_iter252_critical_cross_entity.py: (a) rekonsiliasi ent_kanda benar Δ Rp 900.000; (b) job inventory_drift_watch status=success, run kedua created=0 (dedupe hari); (c) drift-explain ent_kanda memuat suspects.kind 'nilai_cocok_selisih'; (d) GET /api/notifications pada konteks X-Entity-Id=ent_ksc MEMUAT notifikasi type=inventory_drift severity=critical milik entity_id=ent_kanda dengan judul 'Persediaan berselisih Rp 900.000 — CV Kanda Suka' dan link general-ledger; (e) isolasi non-kritis: notifikasi warning ent_kanda yang disisipkan sebagai probe (recipient_user=user_admin_01) TIDAK muncul di konteks ent_ksc (positif kontrol: muncul di ent_kanda), lalu dihapus (nol residu); (f) sales3 (Kanda) tidak melihat notifikasi ent_ksc pada query '', 'all', 'ent_kanda', dan tidak dapat mengakses scope ent_ksc; (g) anti-IDOR: POST /api/notifications/{id_ksc}/read oleh sales3 → 404; (h) konsistensi lonceng: badge 14 == 14 baris unread di daftar (konteks KSC, list<100). UI: admin → pilih KSC via banner scope-pick-ent_ksc → header 'KSC · Admin' → notif-bell buka panel → item 'Persediaan berselisih Rp 900.000 — CV Kanda Suka · Untuk Anda · inventory drift' tampil dan diklik → navigasi ?view=general-ledger (Buku Besar · Jurnal Umum) sukses.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter252_critical_cross_entity.py",
+    "/app/test_reports/pytest/iter252.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "backend/routers/notifications.py::_scope_query — cabang scope {'severity':'critical', 'entity_id': {'$in': ctx.allowed_entity_ids}} sudah cukup untuk mengangkat KRITIS lintas entitas TANPA mengendurkan isolasi (dibatasi allowed_entity_ids). Ide bagus: bila di masa depan ada type=inventory_drift severity=warning yang juga mestinya lintas (mis. ambang < 10× tapi masih penting), pertimbangkan flag terpisah 'cross_entity_visible' di dokumen notifikasi agar aturan tidak bergantung pada severity saja.",
+    "GET /api/notifications mengembalikan list mentah (dibatasi 100 item). Bila jumlah notifikasi tumbuh, badge (unread-count, tanpa batas) bisa MELEBIHI angka unread yang tampak di list, sehingga tampak 'berbohong'. Pertimbangkan pola {items,total,unread} atau lazy-load paginasi supaya badge selalu bisa ditelusuri sampai baris terakhir."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter252_critical_cross_entity.py", "/app/test_reports/iteration_252.json"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (bell KSC menampilkan drift Kanda kritis; klik navigasi ke Buku Besar; badge=list konsisten)"},
+  "test_credentials": "admin@ / sales3@ (Kanda) / sales@ (KSC) · demo12345",
+  "seed_data_creation": "Probe notifikasi warning ent_kanda disisipkan lalu DIHAPUS di test_non_critical_other_entity_stays_filtered (nol residu). Job inventory_drift_watch dijalankan (dedupe hari sudah aktif → run kedua created=0).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Perbaikan lonceng lintas badan usaha (iterasi 252) SUDAH TERVERIFIKASI dan HIJAU (backend + UI). Kunci verifikasi: notifikasi kritis milik entitas lain hanya terangkat ketika entity_id notifikasi ∈ ctx.allowed_entity_ids DAN severity=='critical' (baris 56-57 backend/routers/notifications.py). Uji regresi iter251 tetap valid. Anti-IDOR mark-read tetap 404 karena _scope_query dipakai kembali di POST /notifications/{id}/read.",
+  "rca of the issue": "N/A — fitur bekerja sesuai desain."
+}

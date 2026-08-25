@@ -589,3 +589,39 @@ collection data yang benar"*.
 - **P2** Papan gudang belum punya jalan langsung ke SATU dokumen (klik baris membuka tab, bukan dokumennya).
 - **P2** Penjelas selisih belum menautkan tuduhan ke daftar roll/jurnal yang bisa diklik.
 - **P3** `queue_detail` memindai 200 dokumen lalu memotong di Python — antrean > 200 perlu paginasi sungguhan.
+
+---
+
+## Sesi 2026-06 (lanjutan ke-3) — VERIFIKASI FUNGSIONAL + 1 CACAT NYATA DITUTUP
+
+User meminta pembuktian bahwa fitur sesi sebelumnya "benar-benar berfungsi". Hasil
+penelusuran ulang (peramban + API + POC), bukan klaim:
+
+| Yang dibuktikan | Bukti |
+|---|---|
+| Navigasi papan SALES benar-benar berpindah layar (3/3) | peramban: `special-orders`, Pusat Persetujuan, Persetujuan Harga Khusus |
+| Navigasi papan GUDANG (3/3) | tab `wms-tab-transfer` & `wms-tab-cycle` menjadi aktif; `inspection_hold` → layar SPK Inspeksi & QC |
+| Pemantau drift bekerja END-TO-END pada drift NYATA | job manual → `success`, `created=3`, detail "1 buku berselisih di luar ambang"; notifikasi "Persediaan berselisih Rp 900.000 — CV Kanda Suka" (severity critical, link `general-ledger`) ke 3 pemegang `accounting.manage`; run kedua `created=0` (dedupe); nol jurnal terbit |
+| Penjelas selisih MENUNJUK dokumen, bukan cuma kategori | suspect baru **`nilai_cocok_selisih`** menunjuk `Roll RTN-00001 · Rp 900.000 — PERSIS sebesar selisihnya` + dokumen `trn_8e7c61d55670`; suspect **`selisih_belum_terjelaskan`** menyebut 3 roll terbaru bila tak ada kategori yang cocok |
+| **CACAT NYATA DITEMUKAN & DITUTUP** — peringatan kritis yang tak pernah terbaca | Notifikasi drift milik CV Kanda Suka TIDAK terlihat di lonceng selama konteks pemilih = KSC: pemantau menulis pesan yang tak dibaca siapa pun. Sekarang `routers/notifications.py::_scope_query` (1) meneruskan `entity_id=all` apa adanya (dulu diubah jadi `None` → jatuh ke satu badan usaha), dan (2) mengangkat notifikasi **severity `critical`** untuk badan usaha yang memang jadi PENUGASAN pengguna. Isolasi tetap: notifikasi non-kritis badan usaha lain TETAP tersaring; sales PT lain tetap nol; anti-IDOR `mark_read` tetap 404 |
+
+**Verifikasi:** `gate.sh --full` **HIJAU 362 s** · POC sesi 2026-06 **66 PASS · 0 FAIL**
+(deterministik, pagar baru: kritis-lintas-PT tampil · biasa tersaring · sales PT lain nol)
+· POC isolasi E-0 **83 PASS · 0 FAIL** · agen uji `iteration_251` & `iteration_252`
+**backend 100% · frontend 100% · nol temuan**.
+
+### Catatan penting untuk sesi berikutnya
+- **`INV-GL-DRIFT` masih P1 TERBUKA (akar masalah, bukan pemantauannya).** Drift
+  `ent_kanda` Δ Rp 900.000 nyata dan reproducible: roll `RTN-00001` (retur pelanggan
+  yang dikembalikan lewat retur antar-PT `KSC/ICR-00002`, transfer `KSC/TRF-00005`)
+  mendarat di buku Kanda dengan HPP Rp 90.000/unit, tetapi pasangan jurnal
+  `interco_return:…:goods_in` (Dr 1-1300 / Cr 5-1000) TIDAK pernah terbit — dokumen
+  retur menyimpan `returned_cost = 0` & `goods_in_value = 0`, sementara
+  `cost_basis.previous_unit_cost = 0` padahal roll dinilai ulang ke Rp 90.000.
+  Titik periksa: `services/interco_return_service.on_return_task_executed` (urutan
+  baca roll vs pemindahan kepemilikan) & `_post_goods_gl` (lewat karena `cost_back`
+  terbaca 0). Pemantau + penjelas sekarang menunjuk tepat ke roll & dokumen itu.
+- **P2** Badge lonceng tak berbatas sementara daftarnya dibatasi 100 baris — bila
+  notifikasi menumpuk, angka badge bisa tak bisa ditelusuri sampai baris terakhir.
+- **P2** Aturan "kritis boleh lintas badan usaha" bergantung `severity`; bila kelak ada
+  peringatan penting ber-severity `warning`, pakai flag khusus (`cross_entity_visible`).

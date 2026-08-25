@@ -2565,6 +2565,25 @@ async def inventory_drift_explain(entity_id: str) -> Dict[str, Any]:
         "return": ("sales_return", "interco_return"),
     }
     suspects: List[Dict[str, Any]] = []
+    #: Roll yang nilainya PERSIS sebesar selisih adalah petunjuk terkuat yang bisa
+    #: diberikan tanpa menebak: ia menunjuk satu dokumen untuk diperiksa, bukan kategori.
+    if abs(difference) > 1:
+        for r in rolls:
+            cost = float(r.get("unit_cost") or r.get("base_unit_cost") or 0)
+            nilai = round(float(r.get("length_remaining", 0) or 0) * cost, 2)
+            if nilai <= 0 or abs(nilai - abs(difference)) > 1:
+                continue
+            acq = r.get("acquired") or {}
+            suspects.append({
+                "kind": "nilai_cocok_selisih", "value": nilai,
+                "label": (f"Roll {r.get('roll_no') or '(tanpa nomor)'} bernilai "
+                          f"{rupiah(nilai)} — PERSIS sebesar selisihnya"),
+                "hint": (f"Masuk lewat '{acq.get('via') or r.get('origin_type') or '—'}'"
+                         f" (dokumen {acq.get('ref_id') or '—'}, "
+                         f"{str(acq.get('date') or '')[:10]}). Barangnya ada di gudang "
+                         "tetapi nilainya tidak pernah berjurnal ke 1-1300 — periksa "
+                         "dokumen itu dulu, jangan langsung true-up.")})
+            break
     for slot in sorted(per_origin.values(), key=lambda s: -s["value"]):
         srcs = expected.get(slot["origin"])
         if not srcs:
@@ -2607,6 +2626,26 @@ async def inventory_drift_explain(entity_id: str) -> Dict[str, Any]:
             "kind": "pembulatan", "value": difference,
             "label": "Selisihnya di bawah Rp 1 — pembulatan sen",
             "hint": "Tidak perlu true-up; ambang peringatan sudah menyaringnya."})
+    # Selisih yang MASIH belum tertunjuk tidak boleh berakhir tanpa arah: sebutkan
+    # roll yang paling baru masuk supaya ada dokumen konkret untuk diperiksa.
+    tertunjuk = {"tanpa_jurnal", "nilai_cocok_selisih", "roll_tanpa_hpp", "pembulatan"}
+    if abs(difference) > 1 and not any(s["kind"] in tertunjuk for s in suspects):
+        terbaru = sorted(
+            ({"roll_no": r.get("roll_no") or "(tanpa nomor)",
+              "via": ((r.get("acquired") or {}).get("via")
+                      or r.get("origin_type") or "—"),
+              "date": str((r.get("acquired") or {}).get("date") or "")[:10],
+              "value": round(float(r.get("length_remaining", 0) or 0)
+                             * float(r.get("unit_cost") or r.get("base_unit_cost") or 0), 2)}
+             for r in rolls),
+            key=lambda x: x["date"], reverse=True)[:3]
+        suspects.append({
+            "kind": "selisih_belum_terjelaskan", "value": difference,
+            "label": f"{rupiah(difference)} belum bisa ditunjuk ke satu kategori",
+            "hint": "Roll yang paling baru masuk: "
+                    + " · ".join(f"{t['roll_no']} {rupiah(t['value'])} ({t['via']}, "
+                                 f"{t['date']})" for t in terbaru)
+                    + ". Periksa dokumen sumbernya sebelum true-up."})
 
     return {
         "entity_id": entity_id,

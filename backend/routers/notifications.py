@@ -27,7 +27,14 @@ async def _scope_query(request: Request, entity_id: Optional[str] = None) -> Dic
     """
     user = await current_user(request)
     ctx = await entity_ctx(request)
-    ids = resolve_scope_ids(ctx, entity_id if entity_id and entity_id != "all" else None)
+    # `all` DITERUSKAN apa adanya (FASE E-8): `resolve_scope_ids` sudah mengartikannya
+    # sebagai "semua badan usaha yang DITUGASKAN ke saya". Dulu nilai itu diubah dulu
+    # menjadi None sehingga permintaan gabungan yang TIDAK memakai header `X-Entity-Id`
+    # jatuh ke satu badan usaha aktif saja — akibatnya notifikasi penting badan usaha
+    # lain (mis. peringatan selisih persediaan `inventory_drift` milik CV Kanda Suka)
+    # tak pernah terlihat, padahal orangnya memang berwenang atas kedua buku. Isolasi
+    # tetap utuh: yang dibuka hanya `allowed_entity_ids`.
+    ids = resolve_scope_ids(ctx, entity_id or None)
     # FASE E-8 — mode gabungan sudah ditangani `resolve_scope_ids` lewat `ctx.view_all`
     # (yang kini mengikuti JUMLAH PENUGASAN, bukan nama peran). Tidak perlu lagi
     # cabang khusus `is_cross_entity` di sini: Admin Sales bertugas 2 badan usaha
@@ -38,7 +45,16 @@ async def _scope_query(request: Request, entity_id: Optional[str] = None) -> Dic
     ]}
     scope = {"$or": [{"entity_id": {"$in": list(ids)}},
                      {"entity_id": None}, {"entity_id": ""},
-                     {"entity_id": {"$exists": False}}]}
+                     {"entity_id": {"$exists": False}},
+                     # Peringatan KRITIS tidak boleh tersembunyi hanya karena pemilih
+                     # konteks sedang menunjuk badan usaha lain: pemilik yang berwenang
+                     # atas KEDUA buku dulu tidak pernah melihat peringatan selisih
+                     # persediaan CV Kanda Suka selagi konteksnya PT Kain Suka Cita —
+                     # persis kelas "salah tetapi tenang" yang dilawan pemantau itu.
+                     # Isolasi tetap utuh: batasnya `allowed_entity_ids` (penugasan),
+                     # jadi pengguna satu badan usaha tidak berubah perilakunya.
+                     {"severity": "critical",
+                      "entity_id": {"$in": list(ctx.allowed_entity_ids)}}]}
     return {"$and": [audience, scope]}
 
 

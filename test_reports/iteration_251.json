@@ -1,0 +1,29 @@
+{
+  "summary": "Verifikasi iterasi 251: (a) papan Sales & Gudang di beranda peran + tombol goto benar-benar berpindah layar; (b) penjelas selisih (inventory-drift-explain) untuk buku BERSELISIH (CV Kanda Suka, Δ Rp 900.000) benar-benar menunjuk dokumen — suspects.kind={nilai_cocok_selisih, true_up_sebelumnya}; buku SINKRON (PT KSC) TIDAK punya tuduhan palsu; (c) job scheduler inventory_drift_watch: run pertama status=success created (dari DB) 3 notifikasi untuk 3 pemegang izin accounting.manage (user_admin_01/user_manager_01/user_manager_02), detail '1 buku berselisih di luar ambang'; run kedua created=0 (dedupe hari); job TIDAK menerbitkan jurnal (hitung sebelum=sesudah); (d) tiap notifikasi terisi recipient_user (bukan siaran), severity=critical, link=general-ledger, entity_id=ent_kanda, judul 'Persediaan berselisih Rp 900.000 — CV Kanda Suka', body memuat '1-1300', nilai rupiah, dan True-up terakhir; (e) isolasi antar-PT: sales3 (Kanda) → GET /api/home/warehouse?entity_id=ent_ksc = 403; GET /api/home/sales (tanpa X-Entity-Id) tidak memuat SORD-260816-0001/SO-0007. Regresi papan Sales/Warehouse (iter 250) tetap hijau. Backend 7/7 lulus.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter251_drift_and_isolation.py",
+    "/app/backend/tests/test_home_boards_and_drift.py",
+    "/app/test_reports/pytest/iter251.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "GET /api/notifications dengan entity_id='all' pada user admin TIDAK memuat notifikasi ent_kanda karena `_scope_query` memetakan 'all' → None → default active entity (ent_ksc). Notif drift ent_kanda hanya terlihat bila admin memilih konteks Kanda dari pemilih badan usaha, atau memanggil dengan entity_id=ent_kanda. Ini bukan bug kepatuhan spec (notif memang milik ent_kanda), tetapi lonceng UI admin di konteks KSC TIDAK memperlihatkan notif ini — mungkin perlu perlakuan khusus untuk severity=critical + type=inventory_drift agar terangkat di semua konteks admin/manager pemilik izin accounting.manage, atau lonceng UI perlu default 'Semua Entitas'.",
+    "Backend router /api/gl/journal mengembalikan list mentah (bukan {items,total}) — untuk konsistensi pagination di frontend lebih baik pola {items,total}. Bukan blocker."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter251_drift_and_isolation.py"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (papan Sales 3/3 + Warehouse 3/3 navigasi kerja: special_order/sales_order/price ke layar tujuan; transfer→wms-tab-transfer aktif, cycle_count→wms-tab-cycle aktif, inspection_hold→inspections-view render dengan 2 SPK & 1 DITAHAN)" },
+  "test_credentials": "admin@ / sales@ (KSC) / sales3@ (Kanda) / warehouse@ · demo12345",
+  "seed_data_creation": "Tidak ada seed baru. Job inventory_drift_watch dijalankan (dedupe day sudah aktif dari run sebelumnya di hari yang sama; residu = 3 notifikasi drift ent_kanda yang memang dituju oleh spek). Tidak ada jurnal baru diterbitkan.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iterasi 251 SELESAI hijau. File uji backend baru: test_iter251_drift_and_isolation.py (7 kasus). Bukti kunci dari DB (notifications type=inventory_drift, entity_id=ent_kanda):\n  - id=ntf_b593634a0607 → recipient_user=user_admin_01, severity=critical, link=general-ledger, title='Persediaan berselisih Rp 900.000 — CV Kanda Suka'\n  - ntf_dfbb748e45f5 → user_manager_01\n  - ntf_4b892ea3d43b → user_manager_02\nPer /api/gl/inventory-drift-explain?entity_id=ent_kanda: suspects.kind memuat 'nilai_cocok_selisih' (menunjuk roll RTN-00001 · Rp 900.000) — SESUAI klaim main agent. Sisi frontend: sales-home-board-{special_order,sales_order,price}-goto masing-masing memindahkan layar (special_order → ?view=special-orders); wms-home-board-{transfer,cycle_count}-goto mengaktifkan wms-tab-{transfer,cycle}; wms-home-board-inspection_hold-goto membuka inspections-view. Perhatian kecil: notif drift TIDAK muncul di lonceng admin ketika konteks entitas adalah KSC/all (lihat critical_code_review_comments) — pertimbangkan mengangkat notif critical lintas entitas untuk pemegang izin accounting.manage.",
+  "rca of the issue": "Tidak ada bug fungsional. Satu observasi UX: notif drift ent_kanda hanya terlihat oleh admin/manajer bila konteks entitasnya ent_kanda; di konteks KSC atau 'Semua Entitas' (yang dipetakan → aktif = ent_ksc) notif ini tersaring keluar. Bisa ditingkatkan bila pemilik menghendaki lonceng menampilkan critical lintas entitas untuk pemegang izin akunting."
+}
